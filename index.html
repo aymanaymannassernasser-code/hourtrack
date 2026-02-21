@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>HourTrack — Industrial Runtime Management</title>
+  <meta name="theme-color" content="#09090b"/>
+  <link rel="manifest" href="manifest.json"/>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#09090b;font-family:'IBM Plex Mono','Courier New',monospace}
+    ::-webkit-scrollbar{width:6px;height:6px}
+    ::-webkit-scrollbar-track{background:#18181b}
+    ::-webkit-scrollbar-thumb{background:#3f3f46;border-radius:3px}
+    select option{background:#18181b}
+    .spin{animation:spin 1s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "react":            "https://esm.sh/react@18.3.1",
+      "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
+      "htm/react":        "https://esm.sh/htm@3.1.1/react",
+      "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.39.0"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="root"><div style="color:#f59e0b;padding:2rem;font-family:'IBM Plex Mono',monospace;font-size:13px">◐ Loading HourTrack…</div></div>
+
+  <script type="module">
+    import React,{useState,useEffect,useMemo,useCallback} from 'react';
+    import {createRoot} from 'react-dom/client';
+    import html from 'htm/react';
+    import {createClient} from '@supabase/supabase-js';
+
+    // ════════════════════════════════════════════════════════
+    //  !! PASTE YOUR SUPABASE DETAILS HERE (2 lines to edit) !!
+    // ════════════════════════════════════════════════════════
+    const SUPABASE_URL = 'https://omtkabzcxudyiionloju.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9tdGthYnpjeHVkeWlpb25sb2p1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2OTIyOTYsImV4cCI6MjA4NzI2ODI5Nn0.iE3r_O-qhzeQHj7FvSy76DEB4EJVfgrxmDHjYzsSHbk';
+    // ════════════════════════════════════════════════════════
+
+    const isConfigured = SUPABASE_URL !== 'https://omtkabzcxudyiionloju.supabase.co';
+    const db = isConfigured ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+
+    // ─── MONTHS (rolling 12) ─────────────────────────────
+    const now = new Date();
+    const MONTHS = Array.from({length:12},(_,i)=>{
+      const d=new Date(now.getFullYear(),now.getMonth()-11+i,1);
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
+    });
+
+    // ─── UTILS ───────────────────────────────────────────
+    const fmtMonth = m => new Date(m+'T12:00:00Z').toLocaleDateString('en-US',{month:'short',year:'numeric'});
+    const calcAcc  = (a,raw) => a.reset_count*a.meter_max_value + a.stuck_reading + (raw||0);
+    const uid      = () => `${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
+
+    const validate = (asset,readings,val,month) => {
+      if(val<0) return {status:'CRITICAL',message:'Negative reading not allowed.'};
+      const prev=[...readings].filter(r=>r.asset_id===asset.id&&r.month<month).sort((a,b)=>b.month.localeCompare(a.month))[0];
+      if(!prev) return {status:'OK',message:'First reading for this asset.'};
+      const diff=val-prev.raw_meter_reading;
+      if(diff<0) return {status:'CRITICAL',message:`Decreased by ${Math.abs(diff)} hrs. Record a reset first?`};
+      if(diff>asset.threshold_hours*1.5) return {status:'CRITICAL',message:`+${diff} hrs exceeds critical limit.`};
+      if(diff>asset.threshold_hours) return {status:'WARNING',message:`+${diff} hrs exceeds ${asset.threshold_hours} hr threshold.`};
+      return {status:'OK',message:`+${diff} hrs this month.`};
+    };
+
+    const exportCSV=(data,filename)=>{
+      if(!data.length)return;
+      const keys=Object.keys(data[0]);
+      const csv=[keys.join(','),...data.map(r=>keys.map(k=>`"${r[k]??''}"`).join(','))].join('\n');
+      Object.assign(document.createElement('a'),{href:'data:text/csv;charset=utf-8,'+encodeURIComponent(csv),download:filename}).click();
+    };
+
+    // ─── STYLES ──────────────────────────────────────────
+    const S={
+      badge:v=>{const m={OK:'bg-emerald-900/60 text-emerald-300 border-emerald-700',WARNING:'bg-amber-900/60 text-amber-300 border-amber-700',CRITICAL:'bg-red-900/60 text-red-300 border-red-700',RESET:'bg-sky-900/60 text-sky-300 border-sky-700'};return `text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${m[v]||m.OK}`;},
+      input:'bg-zinc-900 border border-zinc-700 text-zinc-100 rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-amber-500 w-full',
+      btn:'px-4 py-2 rounded text-sm font-semibold tracking-wide transition-all cursor-pointer',
+      btnP:'bg-amber-500 hover:bg-amber-400 text-zinc-950',
+      btnS:'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700',
+      card:'bg-zinc-900 border border-zinc-800 rounded-lg p-5',
+      th:'px-3 py-2 text-left text-[10px] font-mono font-bold text-zinc-500 uppercase tracking-widest',
+      td:'px-3 py-2 text-sm font-mono text-zinc-300 border-t border-zinc-800/60',
+    };
+
+    // ─── SVG CHART ───────────────────────────────────────
+    function SvgChart({data,keys,colors,height=180}){
+      const all=data.flatMap(d=>keys.map(k=>d[k]).filter(v=>v!=null&&!isNaN(v)));
+      if(!all.length) return html`<p class="text-zinc-600 text-sm py-4 italic">No data yet — add readings to see the trend.</p>`;
+      const minY=Math.min(...all),maxY=Math.max(...all),range=maxY-minY||1;
+      const pad={t:10,r:10,b:28,l:58},W=800,H=height,iW=W-pad.l-pad.r,iH=H-pad.t-pad.b;
+      const toX=i=>pad.l+i*(iW/Math.max(data.length-1,1));
+      const toY=v=>pad.t+iH-((v-minY)/range)*iH;
+      const yT=[0,.25,.5,.75,1].map(f=>({v:Math.round(minY+range*f),y:toY(minY+range*f)}));
+      const step=Math.ceil(data.length/6);
+      return html`<svg viewBox="0 0 ${W} ${H}" style=${{width:'100%',height:`${height}px`,display:'block'}}>
+        ${yT.map(({v,y})=>html`<g key=${v}>
+          <line x1=${pad.l} y1=${y} x2=${W-pad.r} y2=${y} stroke="#27272a" stroke-dasharray="3,3"/>
+          <text x=${pad.l-5} y=${y+4} text-anchor="end" fill="#71717a" font-size="10" font-family="monospace">${v>999?(v/1000).toFixed(1)+'k':v}</text>
+        </g>`)}
+        ${data.filter((_,i)=>i%step===0||i===data.length-1).map((d,_,__)=>html`<text key=${data.indexOf(d)} x=${toX(data.indexOf(d))} y=${H-4} text-anchor="middle" fill="#71717a" font-size="9" font-family="monospace">${d.label}</text>`)}
+        ${keys.map((k,ki)=>{
+          const pts=data.map((d,i)=>d[k]!=null&&!isNaN(d[k])?`${toX(i)},${toY(d[k])}`:null).filter(Boolean);
+          return pts.length<2?null:html`<path key=${k} d=${'M'+pts.join('L')} fill="none" stroke=${colors[ki]||'#f59e0b'} stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
+        })}
+      </svg>`;
+    }
+    function Legend({keys,colors}){
+      return html`<div class="flex gap-4 flex-wrap mt-2">
+        ${keys.map((k,i)=>html`<div key=${k} class="flex items-center gap-1.5 text-[11px] text-zinc-400">
+          <div style=${{width:14,height:2,background:colors[i]||'#f59e0b',borderRadius:1}}></div>${k}
+        </div>`)}
+      </div>`;
+    }
+
+    // ─── TOAST ───────────────────────────────────────────
+    function Toast({notif}){
+      if(!notif)return null;
+      const c=notif.type==='error'?'bg-red-950 border-red-700 text-red-200':notif.type==='success'?'bg-emerald-950 border-emerald-700 text-emerald-200':'bg-zinc-800 border-zinc-600 text-zinc-200';
+      return html`<div class=${'fixed top-4 right-4 z-50 px-5 py-3 rounded-lg text-sm font-mono border shadow-xl '+c}>${notif.msg}</div>`;
+    }
+
+    // ─── SETUP SCREEN ────────────────────────────────────
+    function SetupScreen(){
+      return html`<div class="min-h-screen bg-zinc-950 flex items-center justify-center p-6" style=${{fontFamily:"'IBM Plex Mono',monospace"}}>
+        <div class="max-w-lg w-full bg-zinc-900 border border-amber-800/60 rounded-xl p-8">
+          <div class="flex items-center gap-3 mb-6">
+            <div class="w-10 h-10 bg-amber-500 rounded flex items-center justify-center text-zinc-950 font-bold text-xl">H</div>
+            <div><div class="text-amber-400 font-bold tracking-widest uppercase text-lg">HourTrack</div><div class="text-zinc-600 text-xs tracking-widest">Setup Required</div></div>
+          </div>
+          <div class="text-amber-400 text-sm font-bold mb-3">⚙ One-Time Configuration</div>
+          <p class="text-zinc-400 text-sm mb-4">Open <code class="text-amber-300 bg-zinc-800 px-1 rounded">index.html</code> in a text editor (Notepad works fine) and replace the two placeholder values near the top:</p>
+          <div class="bg-zinc-950 border border-zinc-700 rounded p-4 text-xs font-mono mb-4 space-y-1">
+            <div class="text-zinc-600">// Replace these two lines:</div>
+            <div class="text-amber-300">const SUPABASE_URL = 'YOUR_SUPABASE_URL_HERE';</div>
+            <div class="text-amber-300">const SUPABASE_KEY = 'YOUR_SUPABASE_ANON_KEY_HERE';</div>
+          </div>
+          <p class="text-zinc-500 text-xs">Find both values in your Supabase project: <strong class="text-zinc-300">Settings → API</strong></p>
+          <p class="text-zinc-500 text-xs mt-3">See the included <strong class="text-zinc-300">README.md</strong> for full step-by-step instructions.</p>
+        </div>
+      </div>`;
+    }
+
+    // ─── LOGIN SCREEN ────────────────────────────────────
+    function LoginScreen(){
+      const [mode,setMode]=useState('login');
+      const [email,setEmail]=useState('');
+      const [password,setPassword]=useState('');
+      const [err,setErr]=useState('');
+      const [msg,setMsg]=useState('');
+      const [busy,setBusy]=useState(false);
+
+      const submit=async()=>{
+        setErr('');setBusy(true);
+        if(mode==='login'){
+          const {error}=await db.auth.signInWithPassword({email,password});
+          if(error)setErr(error.message);
+        } else {
+          const {error}=await db.auth.signUp({email,password});
+          if(error)setErr(error.message);
+          else setMsg('Account created! You can now sign in. (If email confirmation is enabled in Supabase, check your inbox first.)');
+        }
+        setBusy(false);
+      };
+
+      return html`<div class="min-h-screen bg-zinc-950 flex items-center justify-center p-6" style=${{fontFamily:"'IBM Plex Mono',monospace"}}>
+        <div class="w-full max-w-sm">
+          <div class="flex items-center gap-3 mb-8 justify-center">
+            <div class="w-10 h-10 bg-amber-500 rounded flex items-center justify-center text-zinc-950 font-bold text-lg">H</div>
+            <div>
+              <div class="text-amber-400 font-bold tracking-widest uppercase text-lg">HourTrack</div>
+              <div class="text-zinc-600 text-[10px] tracking-widest uppercase">Industrial Runtime Management</div>
+            </div>
+          </div>
+          <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+            <div class="flex gap-1 mb-5 bg-zinc-950 rounded p-1">
+              ${['login','signup'].map(m=>html`<button key=${m} onClick=${()=>{setMode(m);setErr('');setMsg('');}}
+                class=${'flex-1 py-1.5 text-[11px] font-mono uppercase tracking-widest rounded transition-all '+(mode===m?'bg-amber-500 text-zinc-950':'text-zinc-500 hover:text-zinc-300')}>
+                ${m==='login'?'Sign In':'Sign Up'}
+              </button>`)}
+            </div>
+            ${msg?html`<div class="text-emerald-400 text-xs mb-4 p-3 bg-emerald-950/40 border border-emerald-800 rounded">${msg}</div>`:null}
+            ${err?html`<div class="text-red-400 text-xs mb-4 p-3 bg-red-950/40 border border-red-800 rounded">${err}</div>`:null}
+            <div class="space-y-3">
+              <div><label class="text-[10px] text-zinc-500 uppercase tracking-widest block mb-1">Email</label>
+                <input type="email" class=${S.input} value=${email} onInput=${e=>setEmail(e.target.value)} placeholder="you@company.com" onKeyDown=${e=>e.key==='Enter'&&submit()}/></div>
+              <div><label class="text-[10px] text-zinc-500 uppercase tracking-widest block mb-1">Password</label>
+                <input type="password" class=${S.input} value=${password} onInput=${e=>setPassword(e.target.value)} placeholder="••••••••" onKeyDown=${e=>e.key==='Enter'&&submit()}/></div>
+              <button onClick=${submit} disabled=${busy}
+                class=${'w-full py-2.5 rounded text-sm font-semibold tracking-wide transition-all '+(busy?'bg-zinc-700 text-zinc-500 cursor-not-allowed':'bg-amber-500 hover:bg-amber-400 text-zinc-950')}>
+                ${busy?'Please wait…':mode==='login'?'Sign In →':'Create Account →'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    // ─── ROOT APP ────────────────────────────────────────
+    function App(){
+      const [session,    setSession]    = useState(null);
+      const [userRole,   setUserRole]   = useState('viewer');
+      const [authReady,  setAuthReady]  = useState(false);
+      const [assets,     setAssets]     = useState([]);
+      const [readings,   setReadings]   = useState([]);
+      const [repls,      setRepls]      = useState([]);
+      const [audit,      setAudit]      = useState([]);
+      const [closed,     setClosed]     = useState(new Set());
+      const [loading,    setLoading]    = useState(false);
+      const [view,       setView]       = useState('dashboard');
+      const [detailId,   setDetailId]   = useState(null);
+      const [notif,      setNotif]      = useState(null);
+
+      useEffect(()=>{
+        db.auth.getSession().then(({data:{session}})=>{
+          setSession(session); setAuthReady(true);
+          if(session){loadProfile(session.user.id);loadData();}
+        });
+        const {data:{subscription}}=db.auth.onAuthStateChange((_,s)=>{
+          setSession(s);
+          if(s){loadProfile(s.user.id);loadData();}
+          else {setAssets([]);setReadings([]);setRepls([]);setAudit([]);}
+        });
+        return ()=>subscription.unsubscribe();
+      },[]);
+
+      const loadProfile=async id=>{
+        const {data}=await db.from('profiles').select('role').eq('id',id).single();
+        setUserRole(data?.role||'viewer');
+      };
+
+      const loadData=async()=>{
+        setLoading(true);
+        const [a,r,rl,al,cm]=await Promise.all([
+          db.from('assets').select('*').order('id'),
+          db.from('monthly_readings').select('*').order('month'),
+          db.from('replacement_logs').select('*').order('replacement_date'),
+          db.from('audit_log').select('*').order('timestamp',{ascending:false}).limit(300),
+          db.from('closed_months').select('month'),
+        ]);
+        setAssets(a.data||[]);
+        setReadings(r.data||[]);
+        setRepls(rl.data||[]);
+        setAudit(al.data||[]);
+        setClosed(new Set((cm.data||[]).map(x=>x.month)));
+        setLoading(false);
+      };
+
+      const notify=(msg,type='info')=>{setNotif({msg,type});setTimeout(()=>setNotif(null),4000);};
+      const go=(v,did=null)=>{setView(v);setDetailId(did);};
+      const logout=async()=>{ await db.auth.signOut(); };
+
+      const addAudit=useCallback(async(action,entity,entity_id,detail)=>{
+        const e={id:uid(),timestamp:new Date().toISOString(),user_email:session?.user?.email||'?',action,entity,entity_id,detail};
+        await db.from('audit_log').insert(e);
+        setAudit(p=>[e,...p]);
+      },[session]);
+
+      const currentMonth=MONTHS[MONTHS.length-1];
+      const prevMonth=MONTHS[MONTHS.length-2];
+
+      const stats=useMemo(()=>{
+        let w=0,c=0;
+        readings.filter(r=>r.month===currentMonth).forEach(r=>{if(r.validation==='WARNING')w++;if(r.validation==='CRITICAL')c++;});
+        return{total:assets.filter(a=>a.active_status).length,warnings:w,criticals:c};
+      },[assets,readings,currentMonth]);
+
+      if(!isConfigured) return html`<${SetupScreen}/>`;
+      if(!authReady) return html`<div style="color:#f59e0b;padding:2rem;font-family:'IBM Plex Mono',monospace;font-size:13px">◐ Connecting to database…</div>`;
+      if(!session) return html`<${LoginScreen}/>`;
+
+      const nav=[
+        {id:'dashboard',   label:'Dashboard'},
+        {id:'assets',      label:'Assets'},
+        {id:'entry',       label:'Monthly Entry'},
+        {id:'replacements',label:'Replacements'},
+        {id:'reports',     label:'Reports'},
+        {id:'audit',       label:'Audit Log'},
+        ...(userRole==='admin'?[{id:'users',label:'Users'}]:[]),
+      ];
+
+      const sp={assets,setAssets,readings,setReadings,repls,setRepls,closed,setClosed,userRole,notify,addAudit,go,detailId,setDetailId,currentMonth,prevMonth,db,session,loadData};
+
+      return html`<div class="min-h-screen bg-zinc-950 text-zinc-100" style=${{fontFamily:"'IBM Plex Mono',monospace"}}>
+        <${Toast} notif=${notif}/>
+        <header class="border-b border-zinc-800 bg-zinc-950 sticky top-0 z-40">
+          <div class="flex items-center justify-between px-4 py-3">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 bg-amber-500 rounded flex items-center justify-center text-zinc-950 font-bold">H</div>
+              <div>
+                <div class="text-sm font-semibold tracking-widest text-amber-400 uppercase">HourTrack</div>
+                <div class="text-[9px] text-zinc-600 tracking-widest uppercase hidden sm:block">Industrial Runtime Management</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class=${'hidden sm:inline text-[10px] px-2 py-0.5 rounded border font-mono '+(userRole==='admin'?'border-amber-700 text-amber-400':userRole==='engineer'?'border-sky-700 text-sky-400':'border-zinc-700 text-zinc-500')}>
+                ${userRole.toUpperCase()}
+              </span>
+              <span class="hidden md:inline text-[10px] text-zinc-600 max-w-[140px] truncate">${session.user.email}</span>
+              <button onClick=${loadData} class="text-zinc-500 hover:text-zinc-200 text-xs border border-zinc-700 rounded px-2 py-1">↻ Sync</button>
+              <button onClick=${logout} class="text-zinc-500 hover:text-red-400 text-xs border border-zinc-700 rounded px-2 py-1">Sign Out</button>
+            </div>
+          </div>
+          <nav class="flex overflow-x-auto px-2">
+            ${nav.map(n=>html`<button key=${n.id} onClick=${()=>go(n.id)}
+              class=${'whitespace-nowrap px-3 py-2.5 text-[11px] font-mono tracking-widest uppercase border-b-2 transition-all '+(view===n.id?'border-amber-500 text-amber-400':'border-transparent text-zinc-500 hover:text-zinc-300')}>
+              ${n.label}
+            </button>`)}
+          </nav>
+        </header>
+        <main class="p-4 max-w-7xl mx-auto">
+          ${loading?html`<div class="flex items-center gap-2 text-zinc-500 text-sm py-10 justify-center"><span class="spin inline-block">◐</span><span>Syncing with database…</span></div>`:html`
+            ${view==='dashboard'    && html`<${Dashboard}    ...${sp} stats=${stats}/>`}
+            ${view==='assets'       && html`<${Assets}       ...${sp}/>`}
+            ${view==='entry'        && html`<${MonthlyEntry} ...${sp}/>`}
+            ${view==='replacements' && html`<${Replacements} ...${sp}/>`}
+            ${view==='reports'      && html`<${Reports}      ...${sp}/>`}
+            ${view==='audit'        && html`<${AuditLog}     audit=${audit}/>`}
+            ${view==='users' && userRole==='admin' && html`<${Users} db=${db} session=${session} notify=${notify}/>`}
+          `}
+        </main>
+      </div>`;
+    }
+
+    // ─── DASHBOARD ───────────────────────────────────────
+    function Dashboard({assets,readings,repls,stats,closed,setClosed,go,userRole,notify,addAudit,currentMonth,prevMonth,db,session}){
+      const closeMonth=async()=>{
+        if(userRole!=='admin'){notify('Only Admin can close months.','error');return;}
+        const {error}=await db.from('closed_months').upsert({month:prevMonth,closed_by:session.user.email});
+        if(error){notify(error.message,'error');return;}
+        setClosed(p=>new Set([...p,prevMonth]));
+        addAudit('CLOSE_MONTH','Month',prevMonth,`Closed ${fmtMonth(prevMonth)}`);
+        notify(`${fmtMonth(prevMonth)} locked. ✓`,'success');
+      };
+
+      const chartData=MONTHS.map(m=>({
+        label:fmtMonth(m),
+        ...(assets.slice(0,2).reduce((acc,a)=>{
+          const r=readings.find(rd=>rd.asset_id===a.id&&rd.month===m);
+          acc[a.name]=r?calcAcc(a,r.raw_meter_reading):null;
+          return acc;
+        },{}))
+      }));
+      const chartKeys=assets.slice(0,2).map(a=>a.name);
+
+      return html`<div class="space-y-5">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 class="text-xl font-bold tracking-widest text-zinc-100 uppercase">System Overview</h1>
+            <p class="text-xs text-zinc-500 mt-1">Period: ${fmtMonth(currentMonth)}</p>
+          </div>
+          <div class="flex gap-2 flex-wrap">
+            <button onClick=${()=>go('entry')}        class="${S.btn} ${S.btnP}">+ Reading</button>
+            <button onClick=${()=>go('replacements')} class="${S.btn} ${S.btnS}">↺ Replace</button>
+            <button onClick=${closeMonth}              class="${S.btn} ${S.btnS}">⊠ Close Month</button>
+            <button onClick=${()=>go('reports')}       class="${S.btn} ${S.btnS}">↓ Reports</button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          ${[
+            {label:'Active Assets',  val:stats.total,            color:'text-amber-400'},
+            {label:'Warnings',       val:stats.warnings,         color:'text-amber-300'},
+            {label:'Critical',       val:stats.criticals,        color:'text-red-400'},
+            {label:'Current Period', val:fmtMonth(currentMonth), color:'text-emerald-400',sm:true},
+          ].map(c=>html`<div key=${c.label} class=${S.card}>
+            <div class="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">${c.label}</div>
+            <div class=${'font-bold '+(c.sm?'text-lg':'text-3xl')+' '+c.color}>${c.val}</div>
+          </div>`)}
+        </div>
+
+        ${assets.length===0?html`<div class="${S.card} border-amber-800/40">
+          <div class="text-amber-400 font-bold text-sm mb-2">👋 Welcome to HourTrack!</div>
+          <p class="text-zinc-400 text-sm">Start by adding your first asset. Go to the <button onClick=${()=>go('assets')} class="text-amber-400 underline">Assets</button> tab and click <strong>+ New Asset</strong>.</p>
+        </div>`:null}
+
+        ${assets.length>0?html`<div class=${S.card}>
+          <div class="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-4">Asset Runtime Status</div>
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[640px]">
+              <thead><tr>${['Asset','Latest Reading','Accumulated','Monthly Δ','Resets','Status',''].map(h=>html`<th key=${h} class=${S.th}>${h}</th>`)}</tr></thead>
+              <tbody>
+                ${assets.filter(a=>a.active_status).map(a=>{
+                  const srt=readings.filter(r=>r.asset_id===a.id).sort((x,y)=>y.month.localeCompare(x.month));
+                  const latest=srt[0],prev=srt[1];
+                  const acc=calcAcc(a,latest?.raw_meter_reading||0);
+                  const delta=latest&&prev?latest.raw_meter_reading-prev.raw_meter_reading:null;
+                  const v=latest?.validation||'OK';
+                  const pct=Math.min(100,(acc/(a.meter_max_value*5))*100);
+                  return html`<tr key=${a.id} class="hover:bg-zinc-800/40 cursor-pointer" onClick=${()=>go('assets',a.id)}>
+                    <td class=${S.td}><div class="font-semibold text-zinc-100">${a.name}</div><div class="text-[10px] text-zinc-600">${a.id} — ${a.location}</div></td>
+                    <td class=${S.td}>${latest?latest.raw_meter_reading.toLocaleString():'—'} hrs</td>
+                    <td class=${S.td}>
+                      <div class="text-amber-400 font-bold">${acc.toLocaleString()} hrs</div>
+                      <div class="w-24 h-1 bg-zinc-800 rounded mt-1 overflow-hidden"><div class=${'h-full rounded '+(pct>85?'bg-red-500':pct>60?'bg-amber-500':'bg-emerald-500')} style=${{width:pct+'%'}}></div></div>
+                    </td>
+                    <td class=${S.td}>${delta!==null?html`<span class=${delta>a.threshold_hours?'text-amber-400':'text-emerald-400'}>+${delta} hrs</span>`:'—'}</td>
+                    <td class="${S.td} text-zinc-500">${a.reset_count}×</td>
+                    <td class=${S.td}><span class=${S.badge(v)}>${v}</span></td>
+                    <td class="${S.td} text-zinc-600">→</td>
+                  </tr>`;
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>`:null}
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class=${S.card}>
+            <div class="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-4">Recent Replacements</div>
+            ${repls.length===0
+              ?html`<p class="text-zinc-600 text-sm italic">No replacements logged yet.</p>`
+              :[...repls].reverse().slice(0,4).map(r=>{
+                  const a=assets.find(a=>a.id===r.asset_id);
+                  return html`<div key=${r.id} class="border-l-2 border-amber-700 pl-3 mb-3">
+                    <div class="text-sm text-zinc-200 font-semibold">${a?.name||r.asset_id}</div>
+                    <div class="text-xs text-zinc-500">${fmtMonth(r.replacement_date)} — Reset #${r.new_reset_count} — Stuck: ${r.last_stuck_reading?.toLocaleString()} hrs</div>
+                    <div class="text-[10px] text-zinc-600 italic mt-0.5">${r.notes}</div>
+                  </div>`;
+              })
+            }
+          </div>
+          <div class=${S.card}>
+            <div class="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-2">Accumulated Trend</div>
+            <${SvgChart} data=${chartData} keys=${chartKeys} colors=${['#f59e0b','#6ee7b7']} height=${160}/>
+            <${Legend} keys=${chartKeys} colors=${['#f59e0b','#6ee7b7']}/>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    // ─── ASSETS ──────────────────────────────────────────
+    function Assets({assets,setAssets,readings,repls,userRole,notify,addAudit,detailId,setDetailId,db}){
+      const [showAdd,setShowAdd]=useState(false);
+      const [form,setForm]=useState({name:'',location:'',meter_max_value:9999,threshold_hours:200});
+      const [busy,setBusy]=useState(false);
+      const asset=detailId?assets.find(a=>a.id===detailId):null;
+
+      const addAsset=async()=>{
+        if(!form.name){notify('Name required.','error');return;}
+        setBusy(true);
+        const id=`A${String(assets.length+1).padStart(3,'0')}`;
+        const rec={id,name:form.name,location:form.location,meter_max_value:+form.meter_max_value,reset_count:0,stuck_reading:0,created_at:new Date().toISOString().slice(0,10),active_status:true,threshold_hours:+form.threshold_hours};
+        const {error}=await db.from('assets').insert(rec);
+        if(error){notify(error.message,'error');setBusy(false);return;}
+        setAssets(p=>[...p,rec]);
+        addAudit('CREATE','Asset',id,`Created: ${form.name}`);
+        notify(`Asset ${id} registered. ✓`,'success');
+        setShowAdd(false);setForm({name:'',location:'',meter_max_value:9999,threshold_hours:200});
+        setBusy(false);
+      };
+
+      if(asset){
+        const ar=readings.filter(r=>r.asset_id===asset.id).sort((a,b)=>a.month.localeCompare(b.month));
+        const latest=ar[ar.length-1];
+        const acc=calcAcc(asset,latest?.raw_meter_reading||0);
+        const assetRepls=repls.filter(r=>r.asset_id===asset.id);
+        const chartData=ar.map((r,i)=>({label:fmtMonth(r.month),'Accumulated':calcAcc(asset,r.raw_meter_reading),'Monthly Δ':i>0?r.raw_meter_reading-ar[i-1].raw_meter_reading:0}));
+        return html`<div class="space-y-5">
+          <div class="flex items-center gap-3">
+            <button onClick=${()=>setDetailId(null)} class="${S.btn} ${S.btnS} text-xs">← Back</button>
+            <div><h1 class="text-lg font-bold uppercase tracking-widest text-zinc-100">${asset.name}</h1><p class="text-xs text-zinc-500">${asset.id} — ${asset.location}</p></div>
+          </div>
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            ${[['Accumulated Runtime',`${acc.toLocaleString()} hrs`,'text-amber-400'],['Reset Count',asset.reset_count,'text-sky-400'],['Stuck Reading',`${asset.stuck_reading.toLocaleString()} hrs`,'text-zinc-300'],['Latest Raw',latest?`${latest.raw_meter_reading.toLocaleString()} hrs`:'—','text-zinc-300']].map(([l,v,c])=>html`
+              <div key=${l} class=${S.card}><div class="text-[10px] uppercase tracking-widest text-zinc-500 mb-1">${l}</div><div class=${'text-2xl font-bold '+c}>${v}</div></div>`)}
+          </div>
+          <div class="${S.card} border-amber-900/40">
+            <div class="text-[10px] uppercase tracking-widest text-amber-500 mb-2 font-bold">Runtime Formula</div>
+            <div class="text-sm text-zinc-400 font-mono flex flex-wrap gap-1 items-center">
+              <span class="text-sky-400">${asset.reset_count}</span><span class="text-zinc-600"> × </span>
+              <span class="text-zinc-300">${asset.meter_max_value.toLocaleString()}</span><span class="text-zinc-600"> + </span>
+              <span class="text-zinc-300">${asset.stuck_reading.toLocaleString()}</span><span class="text-zinc-600"> + </span>
+              <span class="text-zinc-300">${latest?.raw_meter_reading||0}</span><span class="text-zinc-600"> = </span>
+              <span class="text-amber-400 font-bold">${acc.toLocaleString()} hrs</span>
+            </div>
+          </div>
+          <div class=${S.card}>
+            <div class="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-2">Runtime Trend</div>
+            <${SvgChart} data=${chartData} keys=${['Accumulated','Monthly Δ']} colors=${['#f59e0b','#6ee7b7']} height=${200}/>
+            <${Legend} keys=${['Accumulated hrs','Monthly Δ hrs']} colors=${['#f59e0b','#6ee7b7']}/>
+            ${assetRepls.length?html`<p class="text-[10px] text-sky-400 mt-2">Meter resets: ${assetRepls.map(r=>fmtMonth(r.replacement_date)).join(', ')}</p>`:null}
+          </div>
+          <div class=${S.card}>
+            <div class="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-3">Reading History</div>
+            <div class="overflow-x-auto">
+              <table class="w-full min-w-[500px]">
+                <thead><tr>${['Month','Raw','Monthly Δ','Accumulated','Status','Locked','By'].map(h=>html`<th key=${h} class=${S.th}>${h}</th>`)}</tr></thead>
+                <tbody>${ar.map((r,i)=>{const prev=ar[i-1],delta=prev?r.raw_meter_reading-prev.raw_meter_reading:null;return html`<tr key=${r.id} class="hover:bg-zinc-800/30">
+                  <td class=${S.td}>${fmtMonth(r.month)}</td>
+                  <td class=${S.td}>${r.raw_meter_reading.toLocaleString()} hrs</td>
+                  <td class=${S.td}>${delta!==null?html`<span class=${delta<0?'text-red-400':delta>asset.threshold_hours?'text-amber-400':'text-emerald-400'}>+${delta}</span>`:'—'}</td>
+                  <td class="${S.td} text-amber-400">${calcAcc(asset,r.raw_meter_reading).toLocaleString()}</td>
+                  <td class=${S.td}><span class=${S.badge(r.validation)}>${r.validation}</span></td>
+                  <td class=${S.td}>${r.locked?html`<span class="text-zinc-500 text-xs">🔒 Locked</span>`:html`<span class="text-emerald-500 text-xs">Open</span>`}</td>
+                  <td class="${S.td} text-zinc-600 text-xs">${r.created_by}</td>
+                </tr>`;})}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>`;
+      }
+
+      return html`<div class="space-y-5">
+        <div class="flex items-center justify-between">
+          <h1 class="text-xl font-bold uppercase tracking-widest text-zinc-100">Asset Registry</h1>
+          ${(userRole==='admin'||userRole==='engineer')?html`<button onClick=${()=>setShowAdd(!showAdd)} class="${S.btn} ${S.btnP}">+ New Asset</button>`:null}
+        </div>
+        ${showAdd?html`<div class="${S.card} border-amber-800/60">
+          <div class="text-xs uppercase tracking-widest text-amber-400 mb-4 font-bold">Register New Asset</div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div><label class="text-[10px] text-zinc-500 uppercase tracking-widest block mb-1">Name *</label><input class=${S.input} value=${form.name} onInput=${e=>setForm(p=>({...p,name:e.target.value}))} placeholder="Compressor Unit #1"/></div>
+            <div><label class="text-[10px] text-zinc-500 uppercase tracking-widest block mb-1">Location</label><input class=${S.input} value=${form.location} onInput=${e=>setForm(p=>({...p,location:e.target.value}))} placeholder="Building A — Bay 3"/></div>
+            <div><label class="text-[10px] text-zinc-500 uppercase tracking-widest block mb-1">Meter Max Value</label><input type="number" class=${S.input} value=${form.meter_max_value} onInput=${e=>setForm(p=>({...p,meter_max_value:e.target.value}))}/></div>
+            <div><label class="text-[10px] text-zinc-500 uppercase tracking-widest block mb-1">Monthly Threshold (hrs)</label><input type="number" class=${S.input} value=${form.threshold_hours} onInput=${e=>setForm(p=>({...p,threshold_hours:e.target.value}))}/></div>
+          </div>
+          <div class="flex gap-2 mt-4">
+            <button onClick=${addAsset} disabled=${busy} class="${S.btn} ${S.btnP}">${busy?'Saving…':'Register Asset'}</button>
+            <button onClick=${()=>setShowAdd(false)} class="${S.btn} ${S.btnS}">Cancel</button>
+          </div>
+        </div>`:null}
+        ${assets.length===0?html`<div class="${S.card}"><p class="text-zinc-500 text-sm italic">No assets yet. Add your first asset to get started.</p></div>`:html`
+        <div class=${S.card}>
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[600px]">
+              <thead><tr>${['ID','Name','Location','Meter Max','Resets','Threshold','Status',''].map(h=>html`<th key=${h} class=${S.th}>${h}</th>`)}</tr></thead>
+              <tbody>${assets.map(a=>html`<tr key=${a.id} class="hover:bg-zinc-800/40 cursor-pointer" onClick=${()=>setDetailId(a.id)}>
+                <td class="${S.td} text-amber-400">${a.id}</td>
+                <td class="${S.td} font-semibold text-zinc-100">${a.name}</td>
+                <td class="${S.td} text-zinc-500 text-xs">${a.location}</td>
+                <td class=${S.td}>${a.meter_max_value.toLocaleString()}</td>
+                <td class=${S.td}>${a.reset_count}</td>
+                <td class=${S.td}>${a.threshold_hours} hrs/mo</td>
+                <td class=${S.td}><span class=${'text-[10px] px-2 py-0.5 rounded border '+(a.active_status?'bg-emerald-900/40 text-emerald-400 border-emerald-800':'bg-zinc-800 text-zinc-500 border-zinc-700')}>${a.active_status?'ACTIVE':'INACTIVE'}</span></td>
+                <td class="${S.td} text-zinc-600">→</td>
+              </tr>`)}</tbody>
+            </table>
+          </div>
+        </div>`}
+      </div>`;
+    }
+
+    // ─── MONTHLY ENTRY ───────────────────────────────────
+    function MonthlyEntry({assets,readings,setReadings,closed,userRole,notify,addAudit,currentMonth,db,session}){
+      const [selMonth,setSelMonth]=useState(currentMonth);
+      const [vals,setVals]=useState({});
+      const [res,setRes]=useState({});
+      const [busy,setBusy]=useState(false);
+      const isLocked=closed.has(selMonth);
+      const canEdit=(userRole==='admin'||userRole==='engineer')&&!isLocked;
+
+      useEffect(()=>{
+        const init={};
+        assets.forEach(a=>{const ex=readings.find(r=>r.asset_id===a.id&&r.month===selMonth);if(ex)init[a.id]=String(ex.raw_meter_reading);});
+        setVals(init);setRes({});
+      },[selMonth,readings]);
+
+      const handleChange=(aid,val)=>{
+        setVals(p=>({...p,[aid]:val}));
+        const asset=assets.find(a=>a.id===aid);
+        if(val!==''&&!isNaN(val))setRes(p=>({...p,[aid]:validate(asset,readings,+val,selMonth)}));
+      };
+
+      const submit=async()=>{
+        if(!canEdit){notify('Month is locked or insufficient role.','error');return;}
+        setBusy(true);
+        let count=0;
+        const newReadings=[...readings];
+        for(const a of assets){
+          const val=vals[a.id];if(val===undefined||val==='')continue;
+          const num=+val;if(isNaN(num))continue;
+          const v=validate(a,newReadings,num,selMonth);
+          const idx=newReadings.findIndex(r=>r.asset_id===a.id&&r.month===selMonth);
+          const rec={id:idx>=0?newReadings[idx].id:uid(),asset_id:a.id,month:selMonth,raw_meter_reading:num,locked:false,created_at:new Date().toISOString(),created_by:session.user.email,validation:v.status};
+          const {error}=await db.from('monthly_readings').upsert(rec,{onConflict:'asset_id,month'});
+          if(error){notify(`Error saving ${a.name}: ${error.message}`,'error');continue;}
+          if(idx>=0){newReadings[idx]=rec;addAudit('EDIT','MonthlyReading',rec.id,`Updated to ${num}`);}
+          else{newReadings.push(rec);addAudit('CREATE','MonthlyReading',rec.id,`New reading ${num} for ${fmtMonth(selMonth)}`);}
+          count++;
+        }
+        setReadings(newReadings);
+        notify(`${count} reading(s) saved. ✓`,'success');
+        setBusy(false);
+      };
+
+      return html`<div class="space-y-5">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div><h1 class="text-xl font-bold uppercase tracking-widest text-zinc-100">Monthly Entry</h1><p class="text-xs text-zinc-500 mt-1">Record meter readings for all assets</p></div>
+          <div class="flex items-center gap-3 flex-wrap">
+            <select value=${selMonth} onChange=${e=>setSelMonth(e.target.value)} class="bg-zinc-900 border border-zinc-700 text-zinc-200 text-sm font-mono rounded px-3 py-2 focus:outline-none focus:border-amber-500">
+              ${MONTHS.map(m=>html`<option key=${m} value=${m}>${fmtMonth(m)}</option>`)}
+            </select>
+            ${isLocked?html`<span class="text-xs text-zinc-500 border border-zinc-700 rounded px-3 py-2">🔒 Locked</span>`:null}
+            ${canEdit?html`<button onClick=${submit} disabled=${busy} class="${S.btn} ${S.btnP}">${busy?'Saving…':'Save All'}</button>`:null}
+          </div>
+        </div>
+        ${isLocked&&userRole==='admin'?html`<div class="border border-amber-800/60 rounded p-3 bg-amber-950/20 text-xs text-amber-400">⚠ Month is closed. Admin edits are audited.</div>`:null}
+        ${assets.length===0?html`<div class="${S.card}"><p class="text-zinc-500 text-sm italic">No assets yet — add assets first from the Assets tab.</p></div>`:html`
+        <div class=${S.card}>
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[600px]">
+              <thead><tr>${['Asset','Prev Reading','New Reading','Validation','Accumulated'].map(h=>html`<th key=${h} class=${S.th}>${h}</th>`)}</tr></thead>
+              <tbody>${assets.filter(a=>a.active_status).map(a=>{
+                const prev=readings.filter(r=>r.asset_id===a.id&&r.month<selMonth).sort((x,y)=>y.month.localeCompare(x.month))[0];
+                const val=vals[a.id]||'',r=res[a.id];
+                const acc=val!==''&&!isNaN(val)?calcAcc(a,+val):null;
+                const bord=r?(r.status==='OK'?'border-emerald-700':r.status==='WARNING'?'border-amber-600':'border-red-600'):'border-zinc-700';
+                return html`<tr key=${a.id} class="border-t border-zinc-800/60 hover:bg-zinc-800/20">
+                  <td class="px-3 py-3"><div class="text-sm font-semibold text-zinc-100">${a.name}</div><div class="text-[10px] text-zinc-600">${a.id}</div></td>
+                  <td class="px-3 py-3 font-mono text-sm text-zinc-400">${prev?prev.raw_meter_reading.toLocaleString():'—'}</td>
+                  <td class="px-3 py-3"><input type="number" min="0" class=${'bg-zinc-900 border text-zinc-100 rounded px-3 py-2 text-sm font-mono focus:outline-none w-32 '+bord} value=${val} onInput=${e=>handleChange(a.id,e.target.value)} disabled=${!canEdit} placeholder="hrs"/></td>
+                  <td class="px-3 py-3">${r?html`<div><span class=${S.badge(r.status)}>${r.status}</span><div class="text-[10px] text-zinc-500 mt-1">${r.message}</div></div>`:html`<span class="text-zinc-700 text-xs">—</span>`}</td>
+                  <td class="px-3 py-3 font-mono text-amber-400 font-bold">${acc!==null?`${acc.toLocaleString()} hrs`:'—'}</td>
+                </tr>`;
+              })}</tbody>
+            </table>
+          </div>
+        </div>`}
+      </div>`;
+    }
+
+    // ─── REPLACEMENTS ────────────────────────────────────
+    function Replacements({assets,setAssets,repls,setRepls,readings,userRole,notify,addAudit,db,session}){
+      const [step,setStep]=useState(0);
+      const [form,setForm]=useState({asset_id:'',last_reading:'',notes:''});
+      const [confirmed,setConfirmed]=useState(null);
+      const [busy,setBusy]=useState(false);
+      const canEdit=userRole==='admin'||userRole==='engineer';
+
+      const start=()=>{
+        if(!form.asset_id){notify('Select an asset.','error');return;}
+        const latest=readings.filter(r=>r.asset_id===form.asset_id).sort((a,b)=>b.month.localeCompare(a.month))[0];
+        setForm(p=>({...p,last_reading:latest?.raw_meter_reading||0}));setStep(1);
+      };
+
+      const confirm=async()=>{
+        setBusy(true);
+        const a=assets.find(a=>a.id===form.asset_id);
+        const newReset=a.reset_count+1,newStuck=a.stuck_reading+(+form.last_reading);
+        const rl={id:uid(),asset_id:form.asset_id,replacement_date:MONTHS[MONTHS.length-1],last_stuck_reading:+form.last_reading,previous_reset_count:a.reset_count,new_reset_count:newReset,notes:form.notes};
+        const [r1,r2]=await Promise.all([
+          db.from('replacement_logs').insert(rl),
+          db.from('assets').update({reset_count:newReset,stuck_reading:newStuck}).eq('id',form.asset_id),
+        ]);
+        if(r1.error||r2.error){notify('Save error — try again.','error');setBusy(false);return;}
+        setRepls(p=>[...p,rl]);
+        setAssets(p=>p.map(x=>x.id===form.asset_id?{...x,reset_count:newReset,stuck_reading:newStuck}:x));
+        addAudit('METER_REPLACEMENT','Asset',form.asset_id,`Reset ${a.reset_count}→${newReset}. Stuck: ${newStuck}`);
+        setConfirmed({asset:a,rl,newReset,newStuck});setStep(2);
+        notify('Meter replacement logged. ✓','success');setBusy(false);
+      };
+
+      const a=assets.find(x=>x.id===form.asset_id);
+
+      return html`<div class="space-y-5">
+        <h1 class="text-xl font-bold uppercase tracking-widest text-zinc-100">Meter Replacements</h1>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <div class="space-y-4">
+            <div class="flex items-center gap-2">
+              ${['Select','Confirm','Done'].map((s,i)=>html`<span key=${s} class="flex items-center gap-2">
+                <span class=${'w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border '+(step>=i?'bg-amber-500 border-amber-500 text-zinc-950':'bg-zinc-900 border-zinc-700 text-zinc-600')}>${i+1}</span>
+                <span class=${'text-[11px] tracking-widest uppercase '+(step>=i?'text-zinc-300':'text-zinc-600')}>${s}</span>
+                ${i<2?html`<span class=${'w-6 h-px '+(step>i?'bg-amber-500':'bg-zinc-700')}></span>`:null}
+              </span>`)}
+            </div>
+            ${step===0?html`<div class="${S.card} border-amber-900/40">
+              <div class="text-xs uppercase tracking-widest text-amber-400 mb-3 font-bold">Step 1 — Select Asset</div>
+              <div class="space-y-3">
+                <div><label class="text-[10px] text-zinc-500 uppercase tracking-widest block mb-1">Asset</label>
+                  <select value=${form.asset_id} onChange=${e=>setForm(p=>({...p,asset_id:e.target.value}))} class=${S.input}>
+                    <option value="">— Select —</option>
+                    ${assets.filter(a=>a.active_status).map(a=>html`<option key=${a.id} value=${a.id}>${a.name} (${a.id})</option>`)}
+                  </select></div>
+                <div><label class="text-[10px] text-zinc-500 uppercase tracking-widest block mb-1">Notes</label>
+                  <textarea class=${S.input} rows="2" value=${form.notes} onInput=${e=>setForm(p=>({...p,notes:e.target.value}))} placeholder="Reason for replacement…"></textarea></div>
+                ${canEdit?html`<button onClick=${start} class="${S.btn} ${S.btnP} w-full">Next →</button>`:html`<div class="text-xs text-zinc-600">Insufficient role.</div>`}
+              </div>
+            </div>`:null}
+            ${step===1&&a?html`<div class="${S.card} border-amber-900/40">
+              <div class="text-xs uppercase tracking-widest text-amber-400 mb-3 font-bold">Step 2 — Confirm Last Reading</div>
+              <div class="space-y-3">
+                <div><label class="text-[10px] text-zinc-500 uppercase tracking-widest block mb-1">Last Raw Reading (captured as stuck reading)</label>
+                  <input type="number" class=${S.input} value=${form.last_reading} onInput=${e=>setForm(p=>({...p,last_reading:e.target.value}))}/></div>
+                <div class="bg-zinc-950/60 border border-zinc-800 rounded p-3 text-xs font-mono space-y-1">
+                  <div class="text-zinc-500">reset_count: <span class="text-zinc-300">${a.reset_count}</span> → <span class="text-amber-400">${a.reset_count+1}</span></div>
+                  <div class="text-zinc-500">new stuck_reading: <span class="text-amber-400">${(a.stuck_reading+(+form.last_reading)).toLocaleString()} hrs</span></div>
+                </div>
+                <div class="flex gap-2">
+                  <button onClick=${()=>setStep(0)} class="${S.btn} ${S.btnS}">← Back</button>
+                  <button onClick=${confirm} disabled=${busy} class="${S.btn} bg-red-900 hover:bg-red-800 text-red-200 border border-red-700">${busy?'Saving…':'Confirm Reset'}</button>
+                </div>
+              </div>
+            </div>`:null}
+            ${step===2&&confirmed?html`<div class="${S.card} border-emerald-800/60">
+              <div class="text-xs uppercase tracking-widest text-emerald-400 mb-3 font-bold">✓ Replacement Logged</div>
+              <div class="text-sm font-mono text-zinc-400 space-y-1">
+                <div>Asset: <span class="text-zinc-100">${confirmed.asset.name}</span></div>
+                <div>New Reset Count: <span class="text-amber-400">${confirmed.newReset}</span></div>
+                <div>Total Stuck: <span class="text-amber-400">${confirmed.newStuck.toLocaleString()} hrs</span></div>
+              </div>
+              <button onClick=${()=>{setStep(0);setForm({asset_id:'',last_reading:'',notes:''});setConfirmed(null);}} class="${S.btn} ${S.btnP} mt-4">Log Another</button>
+            </div>`:null}
+          </div>
+          <div class=${S.card}>
+            <div class="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-3">Replacement Log</div>
+            ${repls.length===0?html`<p class="text-zinc-600 text-sm italic">No replacements yet.</p>`:html`
+            <div class="overflow-x-auto">
+              <table class="w-full min-w-[400px]">
+                <thead><tr>${['Date','Asset','Stuck Rdg','Reset #','Notes'].map(h=>html`<th key=${h} class=${S.th}>${h}</th>`)}</tr></thead>
+                <tbody>${[...repls].reverse().map(r=>{const a=assets.find(a=>a.id===r.asset_id);return html`<tr key=${r.id} class="hover:bg-zinc-800/30">
+                  <td class=${S.td}>${fmtMonth(r.replacement_date)}</td>
+                  <td class=${S.td}><div class="text-zinc-100">${a?.name||r.asset_id}</div><div class="text-[10px] text-zinc-600">${r.asset_id}</div></td>
+                  <td class="${S.td} text-amber-400">${r.last_stuck_reading?.toLocaleString()}</td>
+                  <td class=${S.td}>${r.previous_reset_count}→<span class="text-sky-400">${r.new_reset_count}</span></td>
+                  <td class="${S.td} text-zinc-500 text-xs">${r.notes}</td>
+                </tr>`;})}</tbody>
+              </table>
+            </div>`}
+          </div>
+        </div>
+      </div>`;
+    }
+
+    // ─── REPORTS ─────────────────────────────────────────
+    function Reports({assets,readings}){
+      const [selMonth,setSelMonth]=useState(MONTHS[MONTHS.length-1]);
+      const colors=['#f59e0b','#6ee7b7','#38bdf8','#f472b6'];
+      const report=assets.map(a=>{
+        const r=readings.find(rd=>rd.asset_id===a.id&&rd.month===selMonth);
+        const prev=readings.filter(rd=>rd.asset_id===a.id&&rd.month<selMonth).sort((x,y)=>y.month.localeCompare(x.month))[0];
+        return{id:a.id,name:a.name,location:a.location,raw_reading:r?.raw_meter_reading??'N/A',monthly_delta:r&&prev?r.raw_meter_reading-prev.raw_meter_reading:null,accumulated_runtime:calcAcc(a,r?.raw_meter_reading||0),threshold_hrs:a.threshold_hours,status:r?.validation??'N/A'};
+      });
+      const trendData=MONTHS.map(m=>{const e={label:fmtMonth(m)};assets.forEach(a=>{const r=readings.find(rd=>rd.asset_id===a.id&&rd.month===m);e[a.name]=r?calcAcc(a,r.raw_meter_reading):null;});return e;});
+      return html`<div class="space-y-5">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <h1 class="text-xl font-bold uppercase tracking-widest text-zinc-100">Reports</h1>
+          <div class="flex gap-2 flex-wrap">
+            <select value=${selMonth} onChange=${e=>setSelMonth(e.target.value)} class="bg-zinc-900 border border-zinc-700 text-zinc-200 text-sm font-mono rounded px-3 py-2 focus:outline-none focus:border-amber-500">
+              ${MONTHS.map(m=>html`<option key=${m} value=${m}>${fmtMonth(m)}</option>`)}
+            </select>
+            <button onClick=${()=>exportCSV(report,`runtime-${selMonth}.csv`)} class="${S.btn} ${S.btnS}">↓ CSV Export</button>
+          </div>
+        </div>
+        <div class=${S.card}>
+          <div class="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-3">Monthly Report — ${fmtMonth(selMonth)}</div>
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[600px]">
+              <thead><tr>${['Asset','Raw Reading','Monthly Δ','Accumulated','Threshold','Status'].map(h=>html`<th key=${h} class=${S.th}>${h}</th>`)}</tr></thead>
+              <tbody>${report.map(r=>html`<tr key=${r.id} class="hover:bg-zinc-800/30">
+                <td class=${S.td}><div class="font-semibold text-zinc-100">${r.name}</div><div class="text-[10px] text-zinc-600">${r.id} — ${r.location}</div></td>
+                <td class="${S.td} font-mono">${typeof r.raw_reading==='number'?r.raw_reading.toLocaleString():r.raw_reading} hrs</td>
+                <td class="${S.td} font-mono">${typeof r.monthly_delta==='number'?html`<span class=${r.monthly_delta>r.threshold_hrs?'text-amber-400':'text-emerald-400'}>+${r.monthly_delta}</span>`:'—'}</td>
+                <td class="${S.td} text-amber-400 font-bold">${r.accumulated_runtime.toLocaleString()} hrs</td>
+                <td class="${S.td} text-zinc-500">${r.threshold_hrs} hrs/mo</td>
+                <td class=${S.td}><span class=${S.badge(r.status)}>${r.status}</span></td>
+              </tr>`)}</tbody>
+            </table>
+          </div>
+        </div>
+        <div class=${S.card}>
+          <div class="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-2">All-Asset Accumulated Runtime Trend</div>
+          <${SvgChart} data=${trendData} keys=${assets.map(a=>a.name)} colors=${colors} height=${260}/>
+          <${Legend} keys=${assets.map(a=>a.name)} colors=${colors}/>
+        </div>
+        <div class=${S.card}>
+          <div class="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-3">Threshold Alerts — ${fmtMonth(selMonth)}</div>
+          ${report.filter(r=>typeof r.monthly_delta==='number'&&r.monthly_delta>r.threshold_hrs).length===0
+            ?html`<p class="text-zinc-600 text-sm">No assets exceeded threshold this month. ✓</p>`
+            :report.filter(r=>typeof r.monthly_delta==='number'&&r.monthly_delta>r.threshold_hrs).map(r=>html`<div key=${r.id} class="flex items-center gap-3 border border-amber-800/50 rounded p-3 bg-amber-950/20 mb-2">
+              <span class="text-amber-400">⚠</span>
+              <div class="flex-1"><span class="text-amber-300 font-semibold text-sm">${r.name}</span><span class="text-zinc-500 text-xs ml-2">ran ${r.monthly_delta} hrs vs ${r.threshold_hrs} hr limit</span></div>
+              <span class=${S.badge('WARNING')}>+${r.monthly_delta-r.threshold_hrs} over</span>
+            </div>`)
+          }
+        </div>
+      </div>`;
+    }
+
+    // ─── AUDIT LOG ───────────────────────────────────────
+    function AuditLog({audit}){
+      const colors={CREATE:'text-emerald-400',EDIT:'text-amber-400',DELETE:'text-red-400',LOCK:'text-sky-400',UNLOCK:'text-amber-300',CLOSE_MONTH:'text-purple-400',METER_REPLACEMENT:'text-orange-400'};
+      return html`<div class="space-y-5">
+        <div class="flex items-center justify-between">
+          <h1 class="text-xl font-bold uppercase tracking-widest text-zinc-100">Audit Log</h1>
+          <button onClick=${()=>exportCSV(audit,'audit-log.csv')} class="${S.btn} ${S.btnS}">↓ Export CSV</button>
+        </div>
+        <div class=${S.card}>
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[600px]">
+              <thead><tr>${['Timestamp','User','Action','Entity','Record','Detail'].map(h=>html`<th key=${h} class=${S.th}>${h}</th>`)}</tr></thead>
+              <tbody>${audit.map(e=>html`<tr key=${e.id} class="hover:bg-zinc-800/30">
+                <td class="${S.td} text-zinc-500 text-xs">${new Date(e.timestamp).toLocaleString()}</td>
+                <td class="${S.td} text-zinc-300 text-xs">${e.user_email}</td>
+                <td class=${S.td}><span class=${'text-[11px] font-bold '+(colors[e.action]||'text-zinc-400')}>${e.action}</span></td>
+                <td class="${S.td} text-zinc-500 text-xs">${e.entity}</td>
+                <td class="${S.td} text-zinc-600 text-xs font-mono">${e.entity_id}</td>
+                <td class="${S.td} text-zinc-400 text-xs">${e.detail}</td>
+              </tr>`)}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    // ─── USERS (Admin only) ───────────────────────────────
+    function Users({db,session,notify}){
+      const [users,setUsers]=useState([]);
+      const [loading,setLoading]=useState(true);
+
+      useEffect(()=>{
+        db.from('profiles').select('*').order('created_at').then(({data})=>{setUsers(data||[]);setLoading(false);});
+      },[]);
+
+      const changeRole=async(userId,newRole)=>{
+        const{error}=await db.from('profiles').update({role:newRole}).eq('id',userId);
+        if(error){notify(error.message,'error');return;}
+        setUsers(p=>p.map(u=>u.id===userId?{...u,role:newRole}:u));
+        notify('Role updated. ✓','success');
+      };
+
+      return html`<div class="space-y-5">
+        <h1 class="text-xl font-bold uppercase tracking-widest text-zinc-100">User Management</h1>
+        <div class=${S.card}>
+          ${loading?html`<p class="text-zinc-500 text-sm">Loading users…</p>`:html`
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[500px]">
+              <thead><tr>${['Email','Role','Joined','Change Role'].map(h=>html`<th key=${h} class=${S.th}>${h}</th>`)}</tr></thead>
+              <tbody>${users.map(u=>html`<tr key=${u.id} class="hover:bg-zinc-800/30">
+                <td class=${S.td}><span class=${u.id===session.user.id?'text-amber-400 font-semibold':'text-zinc-200'}>${u.email}${u.id===session.user.id?' (you)':''}</span></td>
+                <td class=${S.td}><span class=${'text-[10px] px-2 py-0.5 rounded border font-bold '+(u.role==='admin'?'border-amber-700 text-amber-400':u.role==='engineer'?'border-sky-700 text-sky-400':'border-zinc-700 text-zinc-500')}>${u.role.toUpperCase()}</span></td>
+                <td class="${S.td} text-zinc-500 text-xs">${new Date(u.created_at).toLocaleDateString()}</td>
+                <td class=${S.td}>
+                  ${u.id!==session.user.id?html`<select value=${u.role} onChange=${e=>changeRole(u.id,e.target.value)} class="bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs font-mono rounded px-2 py-1 focus:outline-none">
+                    <option value="viewer">Viewer — read only</option>
+                    <option value="engineer">Engineer — can add readings</option>
+                    <option value="admin">Admin — full access</option>
+                  </select>`:html`<span class="text-zinc-600 text-xs">Cannot change own role</span>`}
+                </td>
+              </tr>`)}</tbody>
+            </table>
+          </div>`}
+        </div>
+        <div class="${S.card} border-zinc-800/60">
+          <div class="text-xs uppercase tracking-widest text-zinc-400 mb-2 font-bold">How Team Members Join</div>
+          <p class="text-zinc-500 text-sm">Share your app URL with colleagues. They sign up from the login page and automatically get <span class="text-zinc-300">Viewer</span> access. Promote them to Engineer or Admin above.</p>
+          <div class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-mono">
+            ${[['Viewer','Read all data, view reports','border-zinc-700 text-zinc-400'],['Engineer','+ Add readings, log replacements','border-sky-700 text-sky-400'],['Admin','+ Close months, manage users, unlock records','border-amber-700 text-amber-400']].map(([r,d,c])=>html`<div key=${r} class=${'border rounded p-3 '+c}><div class="font-bold mb-1">${r}</div><div class="text-zinc-600 text-[10px]">${d}</div></div>`)}
+          </div>
+        </div>
+      </div>`;
+    }
+
+    // ─── MOUNT ───────────────────────────────────────────
+    createRoot(document.getElementById('root')).render(html`<${App}/>`);
+
+    if('serviceWorker' in navigator){
+      window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+    }
+  </script>
+</body>
+</html>

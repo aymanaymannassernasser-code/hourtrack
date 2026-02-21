@@ -1,869 +1,1048 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>HourTrack — Industrial Runtime Management</title>
-  <meta name="theme-color" content="#09090b"/>
-  <link rel="manifest" href="manifest.json"/>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HourTrack — Industrial Runtime</title>
+  <!-- ONLY ONE EXTERNAL SCRIPT — Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
-    *{box-sizing:border-box}
-    body{margin:0;background:#09090b;font-family:'IBM Plex Mono','Courier New',monospace}
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#09090b;--bg2:#18181b;--bg3:#27272a;--bdr:#3f3f46;
+      --t1:#e4e4e7;--t2:#a1a1aa;--t3:#71717a;
+      --amber:#f59e0b;--amber2:#fbbf24;
+      --green:#6ee7b7;--red:#f87171;--sky:#38bdf8;
+    }
+    body{font-family:'Courier New',monospace;background:var(--bg);color:var(--t1);font-size:14px;line-height:1.5;min-height:100vh}
     ::-webkit-scrollbar{width:6px;height:6px}
-    ::-webkit-scrollbar-track{background:#18181b}
-    ::-webkit-scrollbar-thumb{background:#3f3f46;border-radius:3px}
-    select option{background:#18181b}
-    .spin{animation:spin 1s linear infinite}
+    ::-webkit-scrollbar-track{background:var(--bg2)}
+    ::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:3px}
+    select option{background:var(--bg2)}
+    /* HEADER */
+    #header{background:var(--bg);border-bottom:1px solid var(--bg3);position:sticky;top:0;z-index:50}
+    .hdr-row{display:flex;align-items:center;justify-content:space-between;padding:.6rem 1rem}
+    .logo{display:flex;align-items:center;gap:.6rem}
+    .logo-icon{width:2rem;height:2rem;background:var(--amber);border-radius:.25rem;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.1rem;color:var(--bg)}
+    .logo-text{color:var(--amber);font-weight:600;font-size:.85rem;letter-spacing:.2em;text-transform:uppercase}
+    .logo-sub{color:var(--t3);font-size:.6rem;letter-spacing:.15em;text-transform:uppercase}
+    .hdr-ctrl{display:flex;align-items:center;gap:.4rem}
+    .role-tag{font-size:.6rem;padding:.125rem .4rem;border-radius:.25rem;border:1px solid;font-weight:700}
+    .rt-admin{border-color:#d97706;color:var(--amber)}
+    .rt-engineer{border-color:#0284c7;color:var(--sky)}
+    .rt-viewer{border-color:var(--bdr);color:var(--t3)}
+    .email-tag{font-size:.6rem;color:var(--t3);max-width:9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .icon-btn{background:transparent;border:1px solid var(--bdr);color:var(--t3);border-radius:.25rem;padding:.2rem .5rem;font-size:.7rem;font-family:inherit;cursor:pointer}
+    .icon-btn:hover{color:var(--t1)}
+    /* NAV */
+    #nav{display:flex;overflow-x:auto;padding:0 .5rem}
+    .nav-btn{white-space:nowrap;padding:.55rem .75rem;font-size:.65rem;font-family:inherit;letter-spacing:.1em;text-transform:uppercase;border:none;background:transparent;cursor:pointer;color:var(--t3);border-bottom:2px solid transparent;transition:color .15s,border-color .15s}
+    .nav-btn:hover{color:var(--t2)}
+    .nav-btn.active{color:var(--amber);border-bottom-color:var(--amber)}
+    /* MAIN */
+    #main{max-width:1280px;margin:0 auto;padding:1rem}
+    /* CARDS */
+    .card{background:var(--bg2);border:1px solid var(--bg3);border-radius:.5rem;padding:1.1rem}
+    .card-amber{border-color:rgba(202,138,4,.35)}
+    .card-green{border-color:rgba(16,185,129,.35)}
+    /* BUTTONS */
+    .btn{display:inline-flex;align-items:center;padding:.45rem .9rem;border-radius:.375rem;font-size:.8rem;font-family:inherit;font-weight:600;letter-spacing:.04em;border:none;cursor:pointer;transition:background .15s;text-decoration:none}
+    .btn:disabled{opacity:.5;cursor:not-allowed}
+    .btn-p{background:var(--amber);color:var(--bg)}
+    .btn-p:hover{background:var(--amber2)}
+    .btn-s{background:var(--bg3);color:var(--t1);border:1px solid var(--bdr)!important}
+    .btn-s:hover{background:var(--bdr)}
+    .btn-d{background:rgba(127,29,29,.5);color:#fca5a5;border:1px solid #7f1d1d!important}
+    .btn-d:hover{background:rgba(127,29,29,.8)}
+    /* FORMS */
+    .inp{width:100%;background:var(--bg);border:1px solid var(--bdr);color:var(--t1);border-radius:.375rem;padding:.5rem .7rem;font-size:.85rem;font-family:inherit;outline:none;transition:border-color .15s}
+    .inp:focus{border-color:var(--amber)}
+    .inp:disabled{opacity:.5}
+    .inp-sm{width:7.5rem;background:var(--bg);border:1px solid var(--bdr);color:var(--t1);border-radius:.375rem;padding:.45rem .6rem;font-size:.8rem;font-family:inherit;outline:none}
+    .inp-sm:focus{border-color:var(--amber)}
+    .inp-ok{border-color:#10b981!important}
+    .inp-warn{border-color:#d97706!important}
+    .inp-crit{border-color:#dc2626!important}
+    label.lbl{display:block;font-size:.6rem;text-transform:uppercase;letter-spacing:.15em;color:var(--t3);margin-bottom:.2rem}
+    .fg{margin-bottom:.7rem}
+    .sel{background:var(--bg2);border:1px solid var(--bdr);color:var(--t1);border-radius:.375rem;padding:.45rem .7rem;font-size:.8rem;font-family:inherit;outline:none;cursor:pointer}
+    .sel:focus{border-color:var(--amber)}
+    /* TABLES */
+    .tbl-wrap{overflow-x:auto}
+    table{width:100%;border-collapse:collapse}
+    th{padding:.45rem .75rem;text-align:left;font-size:.6rem;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.15em}
+    td{padding:.5rem .75rem;font-size:.78rem;color:var(--t2);border-top:1px solid rgba(39,39,42,.6);font-family:inherit}
+    .tr-click{cursor:pointer}
+    .tr-click:hover td{background:rgba(39,39,42,.5)}
+    tr:hover td{background:rgba(39,39,42,.3)}
+    /* BADGES */
+    .badge{display:inline-block;padding:.1rem .45rem;border-radius:.25rem;font-size:.6rem;font-weight:700;font-family:inherit;border:1px solid}
+    .b-ok{background:rgba(6,78,59,.4);color:#6ee7b7;border-color:#059669}
+    .b-warn{background:rgba(120,53,15,.4);color:#fcd34d;border-color:#d97706}
+    .b-crit{background:rgba(127,29,29,.4);color:#fca5a5;border-color:#dc2626}
+    .b-reset{background:rgba(7,89,133,.4);color:#7dd3fc;border-color:#0284c7}
+    /* TOAST */
+    #toast{position:fixed;top:1rem;right:1rem;z-index:200;padding:.7rem 1.2rem;border-radius:.5rem;font-size:.8rem;border:1px solid;box-shadow:0 10px 30px rgba(0,0,0,.5);display:none}
+    .t-info{background:var(--bg2);border-color:var(--bdr);color:var(--t1)}
+    .t-ok{background:#052e16;border-color:#166534;color:#86efac}
+    .t-err{background:#450a0a;border-color:#991b1b;color:#fca5a5}
+    /* MISC */
+    .space>*+*{margin-top:1rem}
+    .row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.6rem;margin-bottom:.9rem}
+    .flex{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+    .grid4{display:grid;grid-template-columns:repeat(2,1fr);gap:.7rem}
+    .grid-2col{display:grid;grid-template-columns:1fr;gap:1rem}
+    @media(min-width:900px){.grid4{grid-template-columns:repeat(4,1fr)}.grid-2col{grid-template-columns:1fr 1fr}}
+    .ptitle{font-size:1.1rem;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--t1)}
+    .stitle{font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.2em;color:var(--t3);margin-bottom:.75rem}
+    .mono{font-family:'Courier New',monospace}
+    .amber{color:var(--amber)}
+    .sky{color:var(--sky)}
+    .green{color:var(--green)}
+    .red{color:var(--red)}
+    .dim{color:var(--t3)}
+    .bold{font-weight:700}
+    .sm{font-size:.7rem}
+    .xs{font-size:.6rem}
+    .progbar{height:3px;background:var(--bg3);border-radius:2px;overflow:hidden;margin-top:3px;width:5rem}
+    .progfill{height:100%;border-radius:2px}
+    .bar-g{background:#10b981}.bar-a{background:var(--amber)}.bar-r{background:#ef4444}
+    .formula{background:rgba(9,9,11,.7);border:1px solid var(--bg3);border-radius:.375rem;padding:.7rem;font-family:'Courier New',monospace;font-size:.82rem;display:flex;flex-wrap:wrap;gap:.35rem;align-items:center}
+    .info-box{border:1px solid rgba(202,138,4,.4);background:rgba(120,53,15,.1);border-radius:.375rem;padding:.7rem;font-size:.75rem;color:#fbbf24}
+    .step-row{display:flex;align-items:center;gap:.4rem;margin-bottom:.9rem}
+    .step-c{width:1.4rem;height:1.4rem;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;border:1px solid var(--bdr);background:var(--bg2);color:var(--t3)}
+    .step-c.done{background:var(--amber);border-color:var(--amber);color:var(--bg)}
+    .step-l{width:1.2rem;height:1px;background:var(--bdr)}
+    .step-l.done{background:var(--amber)}
+    .step-txt{font-size:.65rem;text-transform:uppercase;letter-spacing:.08em;color:var(--t3)}
+    .step-txt.done{color:var(--t2)}
+    .alert-row{display:flex;align-items:center;gap:.75rem;border:1px solid rgba(202,138,4,.5);border-radius:.375rem;padding:.75rem;background:rgba(120,53,15,.2);margin-bottom:.4rem}
+    /* LOGIN */
+    .full-center{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.5rem}
+    .login-box{width:100%;max-width:22rem}
+    .tab-bar{display:flex;gap:.2rem;background:var(--bg);border-radius:.375rem;padding:.2rem;margin-bottom:1rem}
+    .tab{flex:1;padding:.35rem;text-align:center;font-size:.65rem;font-family:inherit;text-transform:uppercase;letter-spacing:.1em;border-radius:.25rem;border:none;cursor:pointer;background:transparent;color:var(--t3);transition:all .15s}
+    .tab.active{background:var(--amber);color:var(--bg)}
+    /* CHART */
+    .chart-svg{width:100%;overflow:hidden}
+    /* SEARCH */
+    .search-inp{background:var(--bg);border:1px solid var(--bdr);color:var(--t1);border-radius:.375rem;padding:.4rem .7rem;font-size:.8rem;font-family:inherit;outline:none;width:14rem}
+    .search-inp:focus{border-color:var(--amber)}
+    /* SPIN */
+    .spin{display:inline-block;animation:spin 1s linear infinite}
     @keyframes spin{to{transform:rotate(360deg)}}
   </style>
-  <script type="importmap">
-  {
-    "imports": {
-      "react":            "https://esm.sh/react@18.3.1",
-      "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
-      "htm/react":        "https://esm.sh/htm@3.1.1/react",
-      "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.39.0"
-    }
-  }
-  </script>
 </head>
 <body>
-  <div id="root"><div style="color:#f59e0b;padding:2rem;font-family:'IBM Plex Mono',monospace;font-size:13px">◐ Loading HourTrack…</div></div>
+<div id="toast"></div>
+<div id="root"><div style="color:#f59e0b;padding:2rem;font-family:monospace">◐ Loading HourTrack…</div></div>
 
-  <script type="module">
-    import React,{useState,useEffect,useMemo,useCallback} from 'react';
-    import {createRoot} from 'react-dom/client';
-    import html from 'htm/react';
-    import {createClient} from '@supabase/supabase-js';
+<script>
+// ── CATCH ALL ERRORS AND SHOW ON SCREEN ──────────────────────
+window.onerror = function(msg,src,line){
+  document.getElementById('root').innerHTML =
+    '<div style="padding:2rem;font-family:monospace;color:#f87171;max-width:600px">'+
+    '<h3 style="margin-bottom:.5rem">⚠ JavaScript Error</h3>'+
+    '<p style="color:#e4e4e7">'+esc(msg)+'</p>'+
+    '<p style="color:#71717a;font-size:.75rem;margin-top:.5rem">Line: '+line+'</p>'+
+    '<p style="color:#71717a;font-size:.75rem;margin-top:.5rem">Open browser console (F12) for full details.</p></div>';
+};
 
-    // ════════════════════════════════════════════════════════
-    //  !! PASTE YOUR SUPABASE DETAILS HERE (2 lines to edit) !!
-    // ════════════════════════════════════════════════════════
-    const SUPABASE_URL = 'https://omtkabzcxudyiionloju.supabase.co';
-    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9tdGthYnpjeHVkeWlpb25sb2p1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2OTIyOTYsImV4cCI6MjA4NzI2ODI5Nn0.iE3r_O-qhzeQHj7FvSy76DEB4EJVfgrxmDHjYzsSHbk';
-    // ════════════════════════════════════════════════════════
+// ══ CONFIG — REPLACE THESE TWO VALUES ══════════════════════
+var SUPABASE_URL = 'YOUR_SUPABASE_URL_HERE';
+var SUPABASE_KEY = 'YOUR_SUPABASE_ANON_KEY_HERE';
+// ═══════════════════════════════════════════════════════════
 
-    const isConfigured = SUPABASE_URL !== 'https://omtkabzcxudyiionloju.supabase.co';
-    const db = isConfigured ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+var CONFIGURED = SUPABASE_URL.indexOf('YOUR_') === -1;
+var DB = CONFIGURED ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
-    // ─── MONTHS (rolling 12) ─────────────────────────────
-    const now = new Date();
-    const MONTHS = Array.from({length:12},(_,i)=>{
-      const d=new Date(now.getFullYear(),now.getMonth()-11+i,1);
-      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
+// ── MONTHS ───────────────────────────────────────────────────
+var now = new Date();
+var MONTHS = (function(){
+  var arr=[];
+  for(var i=0;i<12;i++){
+    var d=new Date(now.getFullYear(),now.getMonth()-11+i,1);
+    arr.push(d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-01');
+  }
+  return arr;
+})();
+var CUR_MONTH = MONTHS[MONTHS.length-1];
+var PREV_MONTH = MONTHS[MONTHS.length-2];
+
+// ── STATE ────────────────────────────────────────────────────
+var S = {
+  view: 'loading',       // loading|setup|login|app
+  appTab: 'dashboard',   // dashboard|assets|entry|replacements|reports|audit|users
+  session: null,
+  userRole: 'viewer',
+  assets: [], readings: [], repls: [], audit: [], closed: [],
+  detailId: null,
+  assetSearch: '',
+  entryMonth: CUR_MONTH,
+  entryPending: {},      // assetId -> value string (for monthly entry)
+  entryResults: {},      // assetId -> {status,message}
+  replStep: 0,
+  replAssetId: '', replLastReading: '', replNotes: '',
+  replConf: null,
+  loginMode: 'login',
+  loginEmail: '', loginPw: '', loginErr: '', loginMsg: '', loginBusy: false,
+  addAssetOpen: false,
+  addAssetBusy: false,
+};
+
+// ── UTILS ────────────────────────────────────────────────────
+function pad2(n){ return n<10?'0'+n:String(n); }
+function fmtMonth(m){ return new Date(m+'T12:00:00Z').toLocaleDateString('en-US',{month:'short',year:'numeric'}); }
+function calcAcc(a,raw){ return a.reset_count*a.meter_max_value+a.stuck_reading+(raw||0); }
+function uid(){ return Date.now()+'-'+Math.random().toString(36).slice(2,6); }
+function esc(s){
+  if(s===null||s===undefined) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function badge(v){
+  var m={OK:'b-ok',WARNING:'b-warn',CRITICAL:'b-crit',RESET:'b-reset'};
+  return '<span class="badge '+(m[v]||'b-ok')+'">'+esc(v)+'</span>';
+}
+function roleBadge(r){
+  var c=r==='admin'?'rt-admin':r==='engineer'?'rt-engineer':'rt-viewer';
+  return '<span class="role-tag '+c+'">'+esc(r.toUpperCase())+'</span>';
+}
+function fmtNum(n){ return typeof n==='number'?n.toLocaleString():String(n||'—'); }
+function validateReading(asset, readings, val, month){
+  if(val<0) return {status:'CRITICAL',message:'Negative reading not allowed.'};
+  var prev=null, best='';
+  for(var i=0;i<readings.length;i++){
+    var r=readings[i];
+    if(r.asset_id===asset.id && r.month<month && r.month>best){
+      best=r.month; prev=r;
+    }
+  }
+  if(!prev) return {status:'OK',message:'First reading for this asset.'};
+  var diff=val-prev.raw_meter_reading;
+  if(diff<0) return {status:'CRITICAL',message:'Decreased by '+Math.abs(diff)+' hrs — record a reset?'};
+  if(diff>asset.threshold_hours*1.5) return {status:'CRITICAL',message:'+'+diff+' hrs exceeds critical limit.'};
+  if(diff>asset.threshold_hours) return {status:'WARNING',message:'+'+diff+' hrs exceeds '+asset.threshold_hours+' hr threshold.'};
+  return {status:'OK',message:'+'+diff+' hrs this month.'};
+}
+function exportCSV(data, filename){
+  if(!data.length) return;
+  var keys=Object.keys(data[0]);
+  var rows=[keys.join(',')].concat(data.map(function(r){
+    return keys.map(function(k){ return '"'+(r[k]===null||r[k]===undefined?'':r[k])+'"'; }).join(',');
+  }));
+  var a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(rows.join('\n'));
+  a.download=filename; a.click();
+}
+function svgChart(data, keys, colors, h){
+  h=h||160;
+  var all=[];
+  data.forEach(function(d){ keys.forEach(function(k){ if(d[k]!=null&&!isNaN(d[k])) all.push(d[k]); }); });
+  if(!all.length) return '<p class="dim sm" style="padding:.5rem 0">No data yet — add readings to see trend.</p>';
+  var minY=Math.min.apply(null,all),maxY=Math.max.apply(null,all),range=maxY-minY||1;
+  var W=800,H=h,pl=62,pr=10,pt=8,pb=26,iW=W-pl-pr,iH=H-pt-pb;
+  function tx(i){ return pl+i*(iW/Math.max(data.length-1,1)); }
+  function ty(v){ return pt+iH-((v-minY)/range)*iH; }
+  var yLines='',step=Math.ceil(data.length/6);
+  [0,.25,.5,.75,1].forEach(function(f){
+    var v=Math.round(minY+range*f),y=ty(v);
+    yLines+='<line x1="'+pl+'" y1="'+y+'" x2="'+(W-pr)+'" y2="'+y+'" stroke="#27272a" stroke-dasharray="3,3"/>';
+    yLines+='<text x="'+(pl-4)+'" y="'+(y+4)+'" text-anchor="end" fill="#71717a" font-size="10" font-family="monospace">'+(v>9999?(v/1000).toFixed(0)+'k':v)+'</text>';
+  });
+  var labels='';
+  data.forEach(function(d,i){
+    if(i%step===0||i===data.length-1)
+      labels+='<text x="'+tx(i)+'" y="'+(H-4)+'" text-anchor="middle" fill="#71717a" font-size="9" font-family="monospace">'+esc(d.label)+'</text>';
+  });
+  var lines='';
+  keys.forEach(function(k,ki){
+    var pts=data.map(function(d,i){ return (d[k]!=null&&!isNaN(d[k]))?tx(i)+','+ty(d[k]):null; }).filter(Boolean);
+    if(pts.length>=2) lines+='<path d="M'+pts.join('L')+'" fill="none" stroke="'+(colors[ki]||'#f59e0b')+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>';
+  });
+  var legend='<div class="flex" style="margin-top:.4rem">';
+  keys.forEach(function(k,ki){
+    legend+='<div class="flex xs dim" style="gap:.3rem"><div style="width:14px;height:2px;background:'+(colors[ki]||'#f59e0b')+';border-radius:1px;margin-top:5px"></div>'+esc(k)+'</div>';
+  });
+  legend+='</div>';
+  return '<svg class="chart-svg" viewBox="0 0 '+W+' '+H+'" style="height:'+h+'px">'+yLines+labels+lines+'</svg>'+legend;
+}
+
+// ── TOAST ────────────────────────────────────────────────────
+var _toastTimer=null;
+function toast(msg,type){
+  var el=document.getElementById('toast');
+  if(!el) return;
+  el.textContent=msg;
+  el.className='t-'+(type||'info');
+  el.style.display='block';
+  clearTimeout(_toastTimer);
+  _toastTimer=setTimeout(function(){ el.style.display='none'; },4000);
+}
+
+// ── RENDER ───────────────────────────────────────────────────
+function render(){
+  var root=document.getElementById('root');
+  if(!root) return;
+  if(!CONFIGURED){ root.innerHTML=renderSetup(); return; }
+  if(S.view==='loading'){ root.innerHTML='<div style="color:#f59e0b;padding:2rem;font-family:monospace">◐ Connecting…</div>'; return; }
+  if(S.view==='login'){ root.innerHTML=renderLogin(); return; }
+  root.innerHTML=renderApp();
+}
+
+// ── SETUP SCREEN ─────────────────────────────────────────────
+function renderSetup(){
+  return '<div class="full-center">'+
+    '<div style="max-width:34rem;width:100%" class="card card-amber">'+
+    '<div class="flex" style="margin-bottom:1rem">'+
+    '<div class="logo-icon">H</div>'+
+    '<div><div class="logo-text">HourTrack</div><div class="dim xs">Setup Required</div></div></div>'+
+    '<div class="amber bold sm" style="margin-bottom:.5rem">⚙ One-Time Configuration</div>'+
+    '<p class="sm" style="color:#a1a1aa;margin-bottom:.7rem">Open <b style="color:#fbbf24">index.html</b> in Notepad and replace the two values near the top:</p>'+
+    '<div style="background:var(--bg);border:1px solid var(--bdr);border-radius:.375rem;padding:.9rem;font-size:.72rem;font-family:monospace;margin-bottom:.7rem;line-height:1.8">'+
+    '<span style="color:#71717a">// Replace these two lines:</span><br>'+
+    '<span style="color:#fbbf24">var SUPABASE_URL = \'YOUR_SUPABASE_URL_HERE\';</span><br>'+
+    '<span style="color:#fbbf24">var SUPABASE_KEY = \'YOUR_SUPABASE_ANON_KEY_HERE\';</span>'+
+    '</div>'+
+    '<p class="xs dim">Find both values in Supabase → Settings → API</p>'+
+    '<p class="xs dim" style="margin-top:.3rem">See README.md for the full step-by-step guide.</p>'+
+    '</div></div>';
+}
+
+// ── LOGIN SCREEN ─────────────────────────────────────────────
+function renderLogin(){
+  var isLogin=S.loginMode==='login';
+  return '<div class="full-center">'+
+    '<div class="login-box">'+
+    '<div class="flex" style="justify-content:center;margin-bottom:1.5rem">'+
+    '<div class="logo-icon">H</div>'+
+    '<div><div class="logo-text">HourTrack</div><div class="xs dim">Industrial Runtime Management</div></div></div>'+
+    '<div class="card">'+
+    '<div class="tab-bar">'+
+    '<button class="tab'+(isLogin?' active':'')+'" onclick="setLoginMode(\'login\')">Sign In</button>'+
+    '<button class="tab'+(!isLogin?' active':'')+'" onclick="setLoginMode(\'signup\')">Sign Up</button>'+
+    '</div>'+
+    (S.loginMsg?'<div style="color:#86efac;font-size:.75rem;padding:.6rem;background:#052e16;border:1px solid #166534;border-radius:.375rem;margin-bottom:.7rem">'+esc(S.loginMsg)+'</div>':'')+
+    (S.loginErr?'<div style="color:#fca5a5;font-size:.75rem;padding:.6rem;background:#450a0a;border:1px solid #991b1b;border-radius:.375rem;margin-bottom:.7rem">'+esc(S.loginErr)+'</div>':'')+
+    '<div class="fg"><label class="lbl">Email</label>'+
+    '<input id="l-email" class="inp" type="email" value="'+esc(S.loginEmail)+'" oninput="S.loginEmail=this.value" placeholder="you@company.com" onkeydown="if(event.key===\'Enter\')doLogin()"></div>'+
+    '<div class="fg"><label class="lbl">Password</label>'+
+    '<input id="l-pw" class="inp" type="password" value="'+esc(S.loginPw)+'" oninput="S.loginPw=this.value" placeholder="••••••••" onkeydown="if(event.key===\'Enter\')doLogin()"></div>'+
+    '<button class="btn btn-p" style="width:100%;justify-content:center" onclick="doLogin()" '+(S.loginBusy?'disabled':'')+'>'+
+    (S.loginBusy?'<span class="spin">◐</span> &nbsp;Please wait…':isLogin?'Sign In →':'Create Account →')+'</button>'+
+    '</div></div>';
+}
+
+// ── FULL APP SHELL ────────────────────────────────────────────
+function renderApp(){
+  var tabs=['dashboard','assets','entry','replacements','reports','audit'];
+  if(S.userRole==='admin') tabs.push('users');
+  var navHTML=tabs.map(function(t){
+    return '<button class="nav-btn'+(S.appTab===t?' active':'')+'" onclick="goTab(\''+t+'\')">'+
+      ({dashboard:'Dashboard',assets:'Assets',entry:'Monthly Entry',replacements:'Replacements',reports:'Reports',audit:'Audit Log',users:'Users'}[t]||t)+
+      '</button>';
+  }).join('');
+  var rc=S.userRole==='admin'?'rt-admin':S.userRole==='engineer'?'rt-engineer':'rt-viewer';
+  return '<div id="header">'+
+    '<div class="hdr-row">'+
+    '<div class="logo"><div class="logo-icon">H</div>'+
+    '<div><div class="logo-text">HourTrack</div><div class="logo-sub">Industrial Runtime</div></div></div>'+
+    '<div class="hdr-ctrl">'+
+    '<span class="role-tag '+rc+'">'+esc(S.userRole.toUpperCase())+'</span>'+
+    '<span class="email-tag">'+esc(S.session.user.email)+'</span>'+
+    '<button class="icon-btn" onclick="loadData()">↻ Sync</button>'+
+    '<button class="icon-btn" style="color:#f87171" onclick="doLogout()">Sign Out</button>'+
+    '</div></div>'+
+    '<div id="nav">'+navHTML+'</div>'+
+    '</div>'+
+    '<div id="main" class="space">'+renderTab()+'</div>';
+}
+
+function renderTab(){
+  var t=S.appTab;
+  if(t==='dashboard') return renderDashboard();
+  if(t==='assets') return S.detailId ? renderAssetDetail() : renderAssets();
+  if(t==='entry') return renderEntry();
+  if(t==='replacements') return renderReplacements();
+  if(t==='reports') return renderReports();
+  if(t==='audit') return renderAudit();
+  if(t==='users') return renderUsers();
+  return '';
+}
+
+// ── DASHBOARD ────────────────────────────────────────────────
+function renderDashboard(){
+  var activeAssets=S.assets.filter(function(a){ return a.active_status; });
+  var warnings=0,criticals=0;
+  S.readings.forEach(function(r){ if(r.month===CUR_MONTH){ if(r.validation==='WARNING')warnings++; if(r.validation==='CRITICAL')criticals++; } });
+
+  var statCards=[
+    {label:'Active Assets',val:activeAssets.length,color:'amber'},
+    {label:'Warnings',val:warnings,color:'amber'},
+    {label:'Critical',val:criticals,color:'red'},
+    {label:'Current Period',val:fmtMonth(CUR_MONTH),color:'green',sm:1},
+  ];
+
+  var statsHTML='<div class="grid4">'+statCards.map(function(c){
+    return '<div class="card"><div class="xs dim" style="text-transform:uppercase;letter-spacing:.15em;margin-bottom:.4rem">'+c.label+'</div>'+
+      '<div class="'+(c.sm?'sm':'bold')+'" style="font-size:'+(c.sm?'1rem':'1.6rem')+';color:var(--'+c.color+')">'+(typeof c.val==='string'?c.val:c.val)+'</div></div>';
+  }).join('')+'</div>';
+
+  var tableRows='';
+  if(activeAssets.length===0){
+    tableRows='<tr><td colspan="8" style="color:#71717a;text-align:center;padding:1.5rem">No assets — run seed_data.sql in Supabase then click ↻ Sync</td></tr>';
+  } else {
+    activeAssets.forEach(function(a){
+      var srt=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return y.month.localeCompare(x.month); });
+      var lat=srt[0],prv=srt[1];
+      var acc=calcAcc(a,lat?lat.raw_meter_reading:0);
+      var delta=(lat&&prv)?(lat.raw_meter_reading-prv.raw_meter_reading):null;
+      var v=lat?lat.validation:'OK';
+      var pct=Math.min(100,(acc/(a.meter_max_value*5))*100);
+      var barC=pct>85?'bar-r':pct>60?'bar-a':'bar-g';
+      var dc=delta!==null&&delta>a.threshold_hours?'amber':'green';
+      tableRows+='<tr class="tr-click" onclick="openAssetDetail(\''+esc(a.id)+'\')">'+
+        '<td><div class="bold xs" style="color:#e4e4e7">'+esc(a.name)+'</div><div class="xs dim">'+esc(a.id)+'</div></td>'+
+        '<td class="xs dim">'+esc(a.location)+'</td>'+
+        '<td>'+(lat?lat.raw_meter_reading.toLocaleString():'—')+' hrs</td>'+
+        '<td><div class="amber bold">'+acc.toLocaleString()+' hrs</div>'+
+        '<div class="progbar"><div class="progfill '+barC+'" style="width:'+pct+'%"></div></div></td>'+
+        '<td>'+(delta!==null?'<span class="'+dc+'">+'+delta+' hrs</span>':'—')+'</td>'+
+        '<td>'+a.reset_count+'×</td>'+
+        '<td>'+badge(v)+'</td>'+
+        '<td class="dim xs">→</td>'+
+        '</tr>';
     });
+  }
 
-    // ─── UTILS ───────────────────────────────────────────
-    const fmtMonth = m => new Date(m+'T12:00:00Z').toLocaleDateString('en-US',{month:'short',year:'numeric'});
-    const calcAcc  = (a,raw) => a.reset_count*a.meter_max_value + a.stuck_reading + (raw||0);
-    const uid      = () => `${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
+  var replHTML='';
+  if(S.repls.length===0){
+    replHTML='<p class="dim sm">No replacements logged yet.</p>';
+  } else {
+    S.repls.slice().reverse().slice(0,4).forEach(function(r){
+      var a=S.assets.find(function(x){ return x.id===r.asset_id; });
+      replHTML+='<div style="border-left:2px solid var(--amber);padding:.4rem .7rem;margin-bottom:.6rem">'+
+        '<div class="sm bold" style="color:var(--t1)">'+esc(a?a.name:r.asset_id)+'</div>'+
+        '<div class="xs dim">'+fmtMonth(r.replacement_date)+' — Reset #'+r.new_reset_count+' — Stuck: '+(r.last_stuck_reading||0).toLocaleString()+' hrs</div>'+
+        (r.notes?'<div class="xs" style="color:#52525b;margin-top:.15rem;font-style:italic">'+esc(r.notes)+'</div>':'')+
+        '</div>';
+    });
+  }
 
-    const validate = (asset,readings,val,month) => {
-      if(val<0) return {status:'CRITICAL',message:'Negative reading not allowed.'};
-      const prev=[...readings].filter(r=>r.asset_id===asset.id&&r.month<month).sort((a,b)=>b.month.localeCompare(a.month))[0];
-      if(!prev) return {status:'OK',message:'First reading for this asset.'};
-      const diff=val-prev.raw_meter_reading;
-      if(diff<0) return {status:'CRITICAL',message:`Decreased by ${Math.abs(diff)} hrs. Record a reset first?`};
-      if(diff>asset.threshold_hours*1.5) return {status:'CRITICAL',message:`+${diff} hrs exceeds critical limit.`};
-      if(diff>asset.threshold_hours) return {status:'WARNING',message:`+${diff} hrs exceeds ${asset.threshold_hours} hr threshold.`};
-      return {status:'OK',message:`+${diff} hrs this month.`};
-    };
+  var chartData=MONTHS.map(function(m){
+    var e={label:fmtMonth(m)};
+    S.assets.slice(0,2).forEach(function(a){
+      var r=S.readings.find(function(rd){ return rd.asset_id===a.id&&rd.month===m; });
+      e[a.name]=r?calcAcc(a,r.raw_meter_reading):null;
+    });
+    return e;
+  });
+  var chartKeys=S.assets.slice(0,2).map(function(a){ return a.name; });
 
-    const exportCSV=(data,filename)=>{
-      if(!data.length)return;
-      const keys=Object.keys(data[0]);
-      const csv=[keys.join(','),...data.map(r=>keys.map(k=>`"${r[k]??''}"`).join(','))].join('\n');
-      Object.assign(document.createElement('a'),{href:'data:text/csv;charset=utf-8,'+encodeURIComponent(csv),download:filename}).click();
-    };
+  return statsHTML+
+    (activeAssets.length===0?'<div class="card card-amber"><div class="amber bold sm" style="margin-bottom:.4rem">👋 Welcome to HourTrack!</div><p class="sm" style="color:#a1a1aa">Your 153 motors will appear here after running setup.sql and seed_data.sql in Supabase, then clicking ↻ Sync.</p></div>':
+    '<div class="card">'+
+    '<div class="stitle">Asset Runtime Status — '+fmtMonth(CUR_MONTH)+'</div>'+
+    '<div class="tbl-wrap"><table><thead><tr>'+
+    '<th>Asset</th><th>Location</th><th>Latest Rdg</th><th>Accumulated</th><th>Monthly Δ</th><th>Resets</th><th>Status</th><th></th>'+
+    '</tr></thead><tbody>'+tableRows+'</tbody></table></div></div>')+
+    '<div class="grid-2col">'+
+    '<div class="card"><div class="stitle">Recent Replacements</div>'+replHTML+'</div>'+
+    '<div class="card"><div class="stitle">Accumulated Trend</div>'+svgChart(chartData,chartKeys,['#f59e0b','#6ee7b7'],160)+'</div>'+
+    '</div>'+
+    '<div class="flex" style="margin-top:-.2rem">'+
+    '<button class="btn btn-p" onclick="goTab(\'entry\')">+ Add Reading</button>'+
+    '<button class="btn btn-s" onclick="goTab(\'replacements\')">↺ Replace Meter</button>'+
+    '<button class="btn btn-s" onclick="closeMonth()">⊠ Close Month</button>'+
+    '<button class="btn btn-s" onclick="goTab(\'reports\')">↓ Reports</button>'+
+    '</div>';
+}
 
-    // ─── STYLES ──────────────────────────────────────────
-    const S={
-      badge:v=>{const m={OK:'bg-emerald-900/60 text-emerald-300 border-emerald-700',WARNING:'bg-amber-900/60 text-amber-300 border-amber-700',CRITICAL:'bg-red-900/60 text-red-300 border-red-700',RESET:'bg-sky-900/60 text-sky-300 border-sky-700'};return `text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${m[v]||m.OK}`;},
-      input:'bg-zinc-900 border border-zinc-700 text-zinc-100 rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-amber-500 w-full',
-      btn:'px-4 py-2 rounded text-sm font-semibold tracking-wide transition-all cursor-pointer',
-      btnP:'bg-amber-500 hover:bg-amber-400 text-zinc-950',
-      btnS:'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700',
-      card:'bg-zinc-900 border border-zinc-800 rounded-lg p-5',
-      th:'px-3 py-2 text-left text-[10px] font-mono font-bold text-zinc-500 uppercase tracking-widest',
-      td:'px-3 py-2 text-sm font-mono text-zinc-300 border-t border-zinc-800/60',
-    };
+// ── ASSETS ───────────────────────────────────────────────────
+function renderAssets(){
+  var q=S.assetSearch.toLowerCase();
+  var filtered=S.assets.filter(function(a){
+    return !q||a.name.toLowerCase().indexOf(q)>=0||a.id.toLowerCase().indexOf(q)>=0||a.location.toLowerCase().indexOf(q)>=0;
+  });
+  var canEdit=S.userRole==='admin'||S.userRole==='engineer';
+  var addForm='';
+  if(S.addAssetOpen){
+    addForm='<div class="card card-amber">'+
+      '<div class="xs amber bold" style="text-transform:uppercase;letter-spacing:.15em;margin-bottom:.8rem">Register New Asset</div>'+
+      '<div class="grid2">'+
+      '<div class="fg"><label class="lbl">Tag Name *</label><input id="na-name" class="inp" placeholder="Motor tag no." value=""></div>'+
+      '<div class="fg"><label class="lbl">Location / Drawer</label><input id="na-loc" class="inp" placeholder="Panel 185CC12A +03.17" value=""></div>'+
+      '<div class="fg"><label class="lbl">Meter Max Value</label><input id="na-max" class="inp" type="number" value="9999"></div>'+
+      '<div class="fg"><label class="lbl">Monthly Threshold (hrs)</label><input id="na-thr" class="inp" type="number" value="200"></div>'+
+      '</div>'+
+      '<div class="flex"><button class="btn btn-p" onclick="submitAddAsset()" '+(S.addAssetBusy?'disabled':'')+'>'+
+      (S.addAssetBusy?'Saving…':'Register Asset')+'</button>'+
+      '<button class="btn btn-s" onclick="S.addAssetOpen=false;render()">Cancel</button></div>'+
+      '</div>';
+  }
+  var rows=filtered.length===0?
+    '<tr><td colspan="7" style="color:#71717a;text-align:center;padding:1rem">No assets found.</td></tr>':
+    filtered.map(function(a){
+      return '<tr class="tr-click" onclick="openAssetDetail(\''+esc(a.id)+'\')">'+
+        '<td class="amber xs">'+esc(a.id)+'</td>'+
+        '<td><span class="bold xs" style="color:#e4e4e7">'+esc(a.name)+'</span></td>'+
+        '<td class="xs dim">'+esc(a.location)+'</td>'+
+        '<td>'+a.meter_max_value.toLocaleString()+'</td>'+
+        '<td>'+a.reset_count+'</td>'+
+        '<td>'+a.threshold_hours+' hrs/mo</td>'+
+        '<td class="dim xs">→</td></tr>';
+    }).join('');
+  return '<div class="row">'+
+    '<div class="ptitle">Asset Registry <span class="sm dim">('+filtered.length+'/'+S.assets.length+')</span></div>'+
+    '<div class="flex">'+
+    '<input class="search-inp" placeholder="Search tag, name, location…" value="'+esc(S.assetSearch)+'" oninput="S.assetSearch=this.value;renderAssetList()">'+
+    (canEdit?'<button class="btn btn-p" onclick="S.addAssetOpen=!S.addAssetOpen;render()">+ New Asset</button>':'')+
+    '</div></div>'+
+    addForm+
+    '<div class="card">'+
+    '<div class="tbl-wrap"><table><thead><tr>'+
+    '<th>ID</th><th>Name</th><th>Location / Drawer</th><th>Meter Max</th><th>Resets</th><th>Threshold</th><th></th>'+
+    '</tr></thead><tbody id="asset-tbody">'+rows+'</tbody></table></div></div>';
+}
+function renderAssetList(){
+  var tbody=document.getElementById('asset-tbody');
+  if(!tbody) return;
+  var q=S.assetSearch.toLowerCase();
+  var filtered=S.assets.filter(function(a){ return !q||a.name.toLowerCase().indexOf(q)>=0||a.id.toLowerCase().indexOf(q)>=0||a.location.toLowerCase().indexOf(q)>=0; });
+  tbody.innerHTML=filtered.length===0?
+    '<tr><td colspan="7" style="color:#71717a;text-align:center;padding:1rem">No assets found.</td></tr>':
+    filtered.map(function(a){
+      return '<tr class="tr-click" onclick="openAssetDetail(\''+esc(a.id)+'\')">'+
+        '<td class="amber xs">'+esc(a.id)+'</td>'+
+        '<td><span class="bold xs" style="color:#e4e4e7">'+esc(a.name)+'</span></td>'+
+        '<td class="xs dim">'+esc(a.location)+'</td>'+
+        '<td>'+a.meter_max_value.toLocaleString()+'</td>'+
+        '<td>'+a.reset_count+'</td>'+
+        '<td>'+a.threshold_hours+' hrs/mo</td>'+
+        '<td class="dim xs">→</td></tr>';
+    }).join('');
+  // Update count
+  var titleEl=document.querySelector('.ptitle');
+  if(titleEl) titleEl.innerHTML='Asset Registry <span class="sm dim">('+filtered.length+'/'+S.assets.length+')</span>';
+}
 
-    // ─── SVG CHART ───────────────────────────────────────
-    function SvgChart({data,keys,colors,height=180}){
-      const all=data.flatMap(d=>keys.map(k=>d[k]).filter(v=>v!=null&&!isNaN(v)));
-      if(!all.length) return html`<p class="text-zinc-600 text-sm py-4 italic">No data yet — add readings to see the trend.</p>`;
-      const minY=Math.min(...all),maxY=Math.max(...all),range=maxY-minY||1;
-      const pad={t:10,r:10,b:28,l:58},W=800,H=height,iW=W-pad.l-pad.r,iH=H-pad.t-pad.b;
-      const toX=i=>pad.l+i*(iW/Math.max(data.length-1,1));
-      const toY=v=>pad.t+iH-((v-minY)/range)*iH;
-      const yT=[0,.25,.5,.75,1].map(f=>({v:Math.round(minY+range*f),y:toY(minY+range*f)}));
-      const step=Math.ceil(data.length/6);
-      return html`<svg viewBox="0 0 ${W} ${H}" style=${{width:'100%',height:`${height}px`,display:'block'}}>
-        ${yT.map(({v,y})=>html`<g key=${v}>
-          <line x1=${pad.l} y1=${y} x2=${W-pad.r} y2=${y} stroke="#27272a" stroke-dasharray="3,3"/>
-          <text x=${pad.l-5} y=${y+4} text-anchor="end" fill="#71717a" font-size="10" font-family="monospace">${v>999?(v/1000).toFixed(1)+'k':v}</text>
-        </g>`)}
-        ${data.filter((_,i)=>i%step===0||i===data.length-1).map((d,_,__)=>html`<text key=${data.indexOf(d)} x=${toX(data.indexOf(d))} y=${H-4} text-anchor="middle" fill="#71717a" font-size="9" font-family="monospace">${d.label}</text>`)}
-        ${keys.map((k,ki)=>{
-          const pts=data.map((d,i)=>d[k]!=null&&!isNaN(d[k])?`${toX(i)},${toY(d[k])}`:null).filter(Boolean);
-          return pts.length<2?null:html`<path key=${k} d=${'M'+pts.join('L')} fill="none" stroke=${colors[ki]||'#f59e0b'} stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
-        })}
-      </svg>`;
+function renderAssetDetail(){
+  var a=S.assets.find(function(x){ return x.id===S.detailId; });
+  if(!a) return '<div class="card"><p class="dim">Asset not found.</p></div>';
+  var ar=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return x.month.localeCompare(y.month); });
+  var lat=ar[ar.length-1];
+  var acc=calcAcc(a,lat?lat.raw_meter_reading:0);
+  var assetRepls=S.repls.filter(function(r){ return r.asset_id===a.id; });
+
+  var statCards=[
+    {l:'Accumulated Runtime',v:acc.toLocaleString()+' hrs',c:'amber'},
+    {l:'Reset Count',v:a.reset_count,c:'sky'},
+    {l:'Stuck Reading',v:a.stuck_reading.toLocaleString()+' hrs',c:'t2'},
+    {l:'Latest Raw',v:lat?lat.raw_meter_reading.toLocaleString()+' hrs':'—',c:'t2'},
+  ];
+
+  var chartData=ar.map(function(r,i){
+    return {label:fmtMonth(r.month),'Accumulated':calcAcc(a,r.raw_meter_reading),'Monthly Δ':i>0?r.raw_meter_reading-ar[i-1].raw_meter_reading:0};
+  });
+
+  var rows=ar.map(function(r,i){
+    var prev=ar[i-1];
+    var delta=prev?r.raw_meter_reading-prev.raw_meter_reading:null;
+    var dc=delta===null?'dim':delta<0?'red':delta>a.threshold_hours?'amber':'green';
+    return '<tr>'+
+      '<td>'+fmtMonth(r.month)+'</td>'+
+      '<td>'+r.raw_meter_reading.toLocaleString()+' hrs</td>'+
+      '<td>'+(delta!==null?'<span class="'+dc+'">+'+delta+'</span>':'—')+'</td>'+
+      '<td class="amber">'+calcAcc(a,r.raw_meter_reading).toLocaleString()+'</td>'+
+      '<td>'+badge(r.validation)+'</td>'+
+      '<td>'+(r.locked?'<span class="dim xs">🔒 Locked</span>':'<span class="green xs">Open</span>')+'</td>'+
+      '<td class="dim xs">'+esc(r.created_by)+'</td>'+
+      '</tr>';
+  }).join('');
+
+  return '<div class="flex" style="margin-bottom:.8rem">'+
+    '<button class="btn btn-s xs" onclick="S.detailId=null;render()">← Back</button>'+
+    '<div><div class="ptitle">'+esc(a.name)+'</div><div class="xs dim">'+esc(a.id)+' — '+esc(a.location)+'</div></div></div>'+
+    '<div class="grid4">'+statCards.map(function(c){ return '<div class="card"><div class="xs dim" style="text-transform:uppercase;letter-spacing:.12em;margin-bottom:.3rem">'+c.l+'</div><div class="bold" style="font-size:1.3rem;color:var(--'+c.c+')">'+esc(String(c.v))+'</div></div>'; }).join('')+'</div>'+
+    '<div class="card card-amber"><div class="xs amber bold" style="text-transform:uppercase;letter-spacing:.15em;margin-bottom:.5rem">Runtime Formula</div>'+
+    '<div class="formula"><span class="sky bold">'+a.reset_count+'</span><span class="dim"> × </span>'+
+    '<span>'+a.meter_max_value.toLocaleString()+'</span><span class="dim"> + </span>'+
+    '<span>'+a.stuck_reading.toLocaleString()+'</span><span class="dim"> + </span>'+
+    '<span>'+(lat?lat.raw_meter_reading:0)+'</span><span class="dim"> = </span>'+
+    '<span class="amber bold">'+acc.toLocaleString()+' hrs</span></div></div>'+
+    '<div class="card"><div class="stitle">Runtime Trend</div>'+
+    svgChart(chartData,['Accumulated','Monthly Δ'],['#f59e0b','#6ee7b7'],200)+
+    (assetRepls.length?'<p class="xs sky" style="margin-top:.4rem">Meter resets: '+assetRepls.map(function(r){ return fmtMonth(r.replacement_date); }).join(', ')+'</p>':'')+
+    '</div>'+
+    '<div class="card"><div class="stitle">Reading History</div><div class="tbl-wrap"><table><thead><tr>'+
+    '<th>Month</th><th>Raw</th><th>Monthly Δ</th><th>Accumulated</th><th>Status</th><th>Locked</th><th>By</th>'+
+    '</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+}
+
+// ── MONTHLY ENTRY ─────────────────────────────────────────────
+function renderEntry(){
+  var isLocked=S.closed.indexOf(S.entryMonth)>=0;
+  var canEdit=(S.userRole==='admin'||S.userRole==='engineer')&&!isLocked;
+
+  var monthOpts=MONTHS.map(function(m){ return '<option value="'+m+'"'+(S.entryMonth===m?' selected':'')+'>'+fmtMonth(m)+'</option>'; }).join('');
+
+  if(S.assets.length===0){
+    return '<div class="row"><div class="ptitle">Monthly Entry</div></div>'+
+      '<div class="card"><p class="dim sm">No assets — run seed_data.sql in Supabase and click ↻ Sync.</p></div>';
+  }
+
+  var rows=S.assets.filter(function(a){ return a.active_status; }).map(function(a){
+    var prev=null,best='';
+    S.readings.forEach(function(r){ if(r.asset_id===a.id&&r.month<S.entryMonth&&r.month>best){ best=r.month;prev=r; } });
+    var existing=S.readings.find(function(r){ return r.asset_id===a.id&&r.month===S.entryMonth; });
+    var val=S.entryPending[a.id]!==undefined?S.entryPending[a.id]:(existing?String(existing.raw_meter_reading):'');
+    var res=S.entryResults[a.id]||null;
+    var inpClass='inp-sm'+(res?res.status==='OK'?' inp-ok':res.status==='WARNING'?' inp-warn':' inp-crit':'');
+    var acc=(val!==''&&!isNaN(+val)&&val.trim()!=='')?calcAcc(a,+val):null;
+    return '<tr>'+
+      '<td><div class="xs bold" style="color:#e4e4e7">'+esc(a.name)+'</div><div class="xs dim">'+esc(a.id)+'</div></td>'+
+      '<td class="xs dim">'+esc(a.location)+'</td>'+
+      '<td>'+(prev?prev.raw_meter_reading.toLocaleString():'—')+'</td>'+
+      '<td>'+
+      (canEdit?
+        '<input id="inp-'+esc(a.id)+'" class="'+inpClass+'" type="number" min="0" value="'+esc(val)+'" placeholder="hrs" oninput="handleEntryInput(\''+esc(a.id)+'\',this.value)" disabled="'+(!canEdit)+'">'
+        :'<span class="dim xs">'+(val||'—')+'</span>')+
+      '</td>'+
+      '<td id="val-'+esc(a.id)+'">'+
+      (res?badge(res.status)+'<div class="xs dim" style="margin-top:.15rem">'+esc(res.message)+'</div>':'<span class="dim xs">—</span>')+
+      '</td>'+
+      '<td id="acc-'+esc(a.id)+'" class="amber bold">'+
+      (acc!==null?acc.toLocaleString()+' hrs':'—')+'</td>'+
+      '</tr>';
+  }).join('');
+
+  return '<div class="row">'+
+    '<div><div class="ptitle">Monthly Entry</div><div class="xs dim" style="margin-top:.15rem">Record meter readings for all assets</div></div>'+
+    '<div class="flex">'+
+    '<select class="sel" onchange="S.entryMonth=this.value;S.entryPending={};S.entryResults={};render()">'+monthOpts+'</select>'+
+    (isLocked?'<span class="dim xs" style="border:1px solid var(--bdr);padding:.3rem .6rem;border-radius:.25rem">🔒 Locked</span>':'')+
+    (canEdit?'<button class="btn btn-p" onclick="saveAllReadings()">Save All</button>':'')+
+    '</div></div>'+
+    (isLocked&&S.userRole==='admin'?'<div class="info-box">⚠ Month is closed. Admin edits are fully audited.</div>':'')+
+    '<div class="card"><div class="tbl-wrap"><table><thead><tr>'+
+    '<th>Asset / Tag</th><th>Drawer</th><th>Prev Reading</th><th>New Reading</th><th>Validation</th><th>Accumulated</th>'+
+    '</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+}
+
+// ── REPLACEMENTS ──────────────────────────────────────────────
+function renderReplacements(){
+  var a=S.assets.find(function(x){ return x.id===S.replAssetId; });
+  var canEdit=S.userRole==='admin'||S.userRole==='engineer';
+  var step=S.replStep;
+
+  var steps=['Select','Confirm','Done'].map(function(s,i){
+    return '<span class="step-c'+(step>=i?' done':'')+'">'+( i+1)+'</span>'+
+      '<span class="step-txt'+(step>=i?' done':'')+'">'+s+'</span>'+
+      (i<2?'<span class="step-l'+(step>i?' done':'')+'"></span>':'');
+  }).join('');
+
+  var wiz='';
+  if(step===0){
+    var opts=S.assets.filter(function(a){ return a.active_status; }).map(function(a){ return '<option value="'+esc(a.id)+'"'+(S.replAssetId===a.id?' selected':'')+'>'+esc(a.name)+'</option>'; }).join('');
+    wiz='<div class="card card-amber">'+
+      '<div class="xs amber bold" style="text-transform:uppercase;letter-spacing:.15em;margin-bottom:.8rem">Step 1 — Select Asset</div>'+
+      '<div class="fg"><label class="lbl">Asset</label>'+
+      '<select class="sel" style="width:100%" onchange="S.replAssetId=this.value"><option value="">— Select —</option>'+opts+'</select></div>'+
+      '<div class="fg"><label class="lbl">Notes / Reason</label>'+
+      '<textarea class="inp" rows="2" placeholder="Reason for replacement…" oninput="S.replNotes=this.value">'+esc(S.replNotes)+'</textarea></div>'+
+      (canEdit?'<button class="btn btn-p" style="width:100%;justify-content:center" onclick="replNext()">Next →</button>':
+        '<div class="dim xs">Insufficient role.</div>')+
+      '</div>';
+  } else if(step===1&&a){
+    var newStuck=a.stuck_reading+(+S.replLastReading);
+    wiz='<div class="card card-amber">'+
+      '<div class="xs amber bold" style="text-transform:uppercase;letter-spacing:.15em;margin-bottom:.8rem">Step 2 — Confirm Last Reading</div>'+
+      '<div class="fg"><label class="lbl">Last Raw Reading (becomes stuck reading)</label>'+
+      '<input class="inp" type="number" value="'+esc(S.replLastReading)+'" oninput="S.replLastReading=this.value;replUpdatePreview()"></div>'+
+      '<div style="background:var(--bg);border:1px solid var(--bdr);border-radius:.375rem;padding:.75rem;font-size:.75rem;font-family:monospace;margin-bottom:.8rem" id="repl-preview">'+
+      '<div class="dim">reset_count: <span style="color:#e4e4e7">'+a.reset_count+'</span> → <span class="amber">'+( a.reset_count+1)+'</span></div>'+
+      '<div class="dim">new stuck_reading: <span class="amber">'+newStuck.toLocaleString()+' hrs</span></div>'+
+      '</div>'+
+      '<div class="flex">'+
+      '<button class="btn btn-s" onclick="S.replStep=0;render()">← Back</button>'+
+      '<button class="btn btn-d" onclick="replConfirm()">Confirm Reset</button>'+
+      '</div></div>';
+  } else if(step===2&&S.replConf){
+    var rc=S.replConf;
+    wiz='<div class="card card-green">'+
+      '<div class="xs green bold" style="text-transform:uppercase;letter-spacing:.15em;margin-bottom:.8rem">✓ Replacement Logged</div>'+
+      '<div class="sm" style="line-height:1.8">'+
+      'Asset: <span style="color:#e4e4e7">'+esc(rc.assetName)+'</span><br>'+
+      'New Reset Count: <span class="amber">'+rc.newReset+'</span><br>'+
+      'Total Stuck: <span class="amber">'+rc.newStuck.toLocaleString()+' hrs</span></div>'+
+      '<button class="btn btn-p" style="margin-top:1rem" onclick="replReset()">Log Another</button>'+
+      '</div>';
+  }
+
+  var replRows=S.repls.length===0?
+    '<tr><td colspan="5" style="color:#71717a;text-align:center;padding:1rem">No replacements yet.</td></tr>':
+    S.repls.slice().reverse().map(function(r){
+      var a=S.assets.find(function(x){ return x.id===r.asset_id; });
+      return '<tr>'+
+        '<td>'+fmtMonth(r.replacement_date)+'</td>'+
+        '<td class="xs bold" style="color:#e4e4e7">'+esc(a?a.name:r.asset_id)+'</td>'+
+        '<td class="amber">'+(r.last_stuck_reading||0).toLocaleString()+'</td>'+
+        '<td>'+r.previous_reset_count+' → <span class="sky">'+r.new_reset_count+'</span></td>'+
+        '<td class="xs dim">'+esc(r.notes)+'</td></tr>';
+    }).join('');
+
+  return '<div class="ptitle" style="margin-bottom:1rem">Meter Replacements</div>'+
+    '<div class="grid-2col">'+
+    '<div class="space">'+
+    '<div class="step-row">'+steps+'</div>'+
+    wiz+'</div>'+
+    '<div class="card">'+
+    '<div class="stitle">Replacement Log</div>'+
+    '<div class="tbl-wrap"><table><thead><tr>'+
+    '<th>Date</th><th>Asset</th><th>Stuck Rdg</th><th>Reset #</th><th>Notes</th>'+
+    '</tr></thead><tbody>'+replRows+'</tbody></table></div></div>'+
+    '</div>';
+}
+
+// ── REPORTS ──────────────────────────────────────────────────
+function renderReports(){
+  var selM=S.reportsMonth||CUR_MONTH;
+  var monthOpts=MONTHS.map(function(m){ return '<option value="'+m+'"'+(selM===m?' selected':'')+'>'+fmtMonth(m)+'</option>'; }).join('');
+  var report=S.assets.map(function(a){
+    var r=S.readings.find(function(rd){ return rd.asset_id===a.id&&rd.month===selM; });
+    var prev=null,best='';
+    S.readings.forEach(function(rd){ if(rd.asset_id===a.id&&rd.month<selM&&rd.month>best){ best=rd.month;prev=rd; } });
+    var delta=(r&&prev)?(r.raw_meter_reading-prev.raw_meter_reading):null;
+    return {id:a.id,name:a.name,location:a.location,raw:r?r.raw_meter_reading:null,delta:delta,acc:calcAcc(a,r?r.raw_meter_reading:0),thr:a.threshold_hours,status:r?r.validation:'N/A'};
+  });
+  var trendData=MONTHS.map(function(m){
+    var e={label:fmtMonth(m)};
+    S.assets.forEach(function(a){
+      var r=S.readings.find(function(rd){ return rd.asset_id===a.id&&rd.month===m; });
+      e[a.name]=r?calcAcc(a,r.raw_meter_reading):null;
+    });
+    return e;
+  });
+  var colors=['#f59e0b','#6ee7b7','#38bdf8','#f472b6','#a78bfa','#fb7185'];
+  var reportRows=report.map(function(r){
+    return '<tr>'+
+      '<td><div class="xs bold" style="color:#e4e4e7">'+esc(r.name)+'</div><div class="xs dim">'+esc(r.id)+'</div></td>'+
+      '<td>'+(r.raw!==null?r.raw.toLocaleString():'—')+' hrs</td>'+
+      '<td>'+(r.delta!==null?'<span class="'+(r.delta>r.thr?'amber':'green')+'">+'+r.delta+'</span>':'—')+'</td>'+
+      '<td class="amber bold">'+r.acc.toLocaleString()+' hrs</td>'+
+      '<td class="dim xs">'+r.thr+' hrs/mo</td>'+
+      '<td>'+badge(r.status)+'</td></tr>';
+  }).join('');
+  var alerts=report.filter(function(r){ return r.delta!==null&&r.delta>r.thr; });
+  var alertsHTML=alerts.length===0?'<p class="dim sm">No assets exceeded threshold this month. ✓</p>':
+    alerts.map(function(r){ return '<div class="alert-row">'+
+      '<span class="amber">⚠</span>'+
+      '<div><span class="amber bold sm">'+esc(r.name)+'</span> '+
+      '<span class="xs dim">ran '+r.delta+' hrs vs '+r.thr+' hr limit</span></div>'+
+      '<span class="badge b-warn">+'+( r.delta-r.thr)+' over</span>'+
+      '</div>'; }).join('');
+
+  var csvData=report.map(function(r){ return {id:r.id,name:r.name,location:r.location,month:fmtMonth(selM),raw_reading:r.raw,monthly_delta:r.delta,accumulated:r.acc,threshold:r.thr,status:r.status}; });
+
+  return '<div class="row">'+
+    '<div class="ptitle">Reports</div>'+
+    '<div class="flex">'+
+    '<select class="sel" onchange="S.reportsMonth=this.value;render()">'+monthOpts+'</select>'+
+    '<button class="btn btn-s" onclick="exportCSV('+JSON.stringify(csvData)+',\'runtime-'+selM+'.csv\')">↓ CSV Export</button>'+
+    '</div></div>'+
+    '<div class="card"><div class="stitle">Monthly Report — '+fmtMonth(selM)+'</div>'+
+    '<div class="tbl-wrap"><table><thead><tr>'+
+    '<th>Asset</th><th>Raw Reading</th><th>Monthly Δ</th><th>Accumulated</th><th>Threshold</th><th>Status</th>'+
+    '</tr></thead><tbody>'+reportRows+'</tbody></table></div></div>'+
+    '<div class="card"><div class="stitle">All-Asset Accumulated Trend</div>'+
+    svgChart(trendData,S.assets.map(function(a){ return a.name; }),colors,260)+'</div>'+
+    '<div class="card"><div class="stitle">Threshold Alerts — '+fmtMonth(selM)+'</div>'+alertsHTML+'</div>';
+}
+
+// ── AUDIT LOG ────────────────────────────────────────────────
+function renderAudit(){
+  var colorMap={CREATE:'green',EDIT:'amber',DELETE:'red',LOCK:'sky',UNLOCK:'amber',CLOSE_MONTH:'sky',METER_REPLACEMENT:'amber'};
+  var rows=S.audit.map(function(e){
+    return '<tr>'+
+      '<td class="xs dim">'+new Date(e.timestamp).toLocaleString()+'</td>'+
+      '<td class="xs" style="color:#e4e4e7">'+esc(e.user_email)+'</td>'+
+      '<td><span class="xs bold '+(colorMap[e.action]||'dim')+'">'+esc(e.action)+'</span></td>'+
+      '<td class="xs dim">'+esc(e.entity)+'</td>'+
+      '<td class="xs dim mono">'+esc(e.entity_id)+'</td>'+
+      '<td class="xs dim">'+esc(e.detail)+'</td></tr>';
+  }).join('');
+  return '<div class="row">'+
+    '<div class="ptitle">Audit Log</div>'+
+    '<button class="btn btn-s" onclick="exportAudit()">↓ Export CSV</button></div>'+
+    '<div class="card"><div class="tbl-wrap"><table><thead><tr>'+
+    '<th>Timestamp</th><th>User</th><th>Action</th><th>Entity</th><th>Record</th><th>Detail</th>'+
+    '</tr></thead><tbody>'+(rows||'<tr><td colspan="6" style="color:#71717a;text-align:center;padding:1rem">No audit entries yet.</td></tr>')+'</tbody></table></div></div>';
+}
+
+// ── USERS (admin) ─────────────────────────────────────────────
+function renderUsers(){
+  if(!S._users){ loadUsers(); return '<div class="card"><div class="flex"><span class="spin">◐</span><span class="dim sm">Loading users…</span></div></div>'; }
+  var rows=S._users.map(function(u){
+    var isMe=u.id===S.session.user.id;
+    return '<tr>'+
+      '<td><span class="'+(isMe?'amber bold':'sm')+'" style="color:'+(isMe?'#f59e0b':'#e4e4e7')+'">'+esc(u.email)+(isMe?' (you)':'')+'</span></td>'+
+      '<td>'+roleBadge(u.role)+'</td>'+
+      '<td class="xs dim">'+new Date(u.created_at).toLocaleDateString()+'</td>'+
+      '<td>'+(isMe?'<span class="dim xs">Cannot change own role</span>':
+        '<select class="sel" style="font-size:.72rem" onchange="changeRole(\''+esc(u.id)+'\',this.value)">'+
+        '<option value="viewer"'+(u.role==='viewer'?' selected':'')+'>Viewer — read only</option>'+
+        '<option value="engineer"'+(u.role==='engineer'?' selected':'')+'>Engineer — add readings</option>'+
+        '<option value="admin"'+(u.role==='admin'?' selected':'')+'>Admin — full access</option>'+
+        '</select>')+'</td></tr>';
+  }).join('');
+  return '<div class="ptitle" style="margin-bottom:1rem">User Management</div>'+
+    '<div class="card"><div class="tbl-wrap"><table><thead><tr>'+
+    '<th>Email</th><th>Role</th><th>Joined</th><th>Change Role</th>'+
+    '</tr></thead><tbody>'+rows+'</tbody></table></div></div>'+
+    '<div class="card">'+
+    '<div class="stitle">How Team Access Works</div>'+
+    '<p class="sm" style="color:#a1a1aa;margin-bottom:.7rem">Share your app URL. Colleagues sign up → get Viewer access → you promote them here.</p>'+
+    '<div class="grid-2col">'+
+    ['Viewer|Read all data and reports|rt-viewer','Engineer|+ Add readings, log replacements|rt-engineer','Admin|+ Close months, manage users|rt-admin'].map(function(s){
+      var p=s.split('|');
+      return '<div style="border:1px solid var(--bdr);border-radius:.375rem;padding:.7rem">'+
+        '<div class="bold xs role-tag '+p[2]+'" style="display:inline-block;margin-bottom:.3rem">'+p[0].toUpperCase()+'</div>'+
+        '<div class="xs dim">'+p[1]+'</div></div>';
+    }).join('')+
+    '</div></div>';
+}
+
+// ════════════════════════════════════════════════════════════
+// ACTIONS
+// ════════════════════════════════════════════════════════════
+function setLoginMode(m){ S.loginMode=m; S.loginErr=''; S.loginMsg=''; render(); }
+
+async function doLogin(){
+  S.loginErr=''; S.loginBusy=true; render();
+  var email=document.getElementById('l-email')?document.getElementById('l-email').value:S.loginEmail;
+  var pw=document.getElementById('l-pw')?document.getElementById('l-pw').value:S.loginPw;
+  S.loginEmail=email; S.loginPw=pw;
+  var r;
+  if(S.loginMode==='login'){
+    r=await DB.auth.signInWithPassword({email:email,password:pw});
+  } else {
+    r=await DB.auth.signUp({email:email,password:pw});
+    if(!r.error){ S.loginMsg='Account created! You can now sign in.'; S.loginMode='login'; S.loginBusy=false; render(); return; }
+  }
+  if(r.error){ S.loginErr=r.error.message; }
+  S.loginBusy=false; render();
+}
+
+async function doLogout(){
+  await DB.auth.signOut();
+  S.session=null; S.view='login'; render();
+}
+
+async function loadData(){
+  var mainEl=document.getElementById('main');
+  if(mainEl) mainEl.innerHTML='<div class="flex" style="padding:2rem;justify-content:center"><span class="spin">◐</span><span class="dim sm">&nbsp;Loading data…</span></div>';
+  var results=await Promise.all([
+    DB.from('assets').select('*').order('id'),
+    DB.from('monthly_readings').select('*').order('month'),
+    DB.from('replacement_logs').select('*').order('replacement_date'),
+    DB.from('audit_log').select('*').order('timestamp',{ascending:false}).limit(500),
+    DB.from('closed_months').select('month'),
+  ]);
+  S.assets=results[0].data||[];
+  S.readings=results[1].data||[];
+  S.repls=results[2].data||[];
+  S.audit=results[3].data||[];
+  S.closed=(results[4].data||[]).map(function(x){ return x.month; });
+  render();
+}
+
+async function loadProfile(id){
+  var r=await DB.from('profiles').select('role').eq('id',id).single();
+  S.userRole=(r.data&&r.data.role)||'viewer';
+}
+
+function goTab(t){ S.appTab=t; S.detailId=null; render(); }
+function openAssetDetail(id){ S.detailId=id; S.appTab='assets'; render(); }
+
+// ADD ASSET
+async function submitAddAsset(){
+  var nameEl=document.getElementById('na-name');
+  var locEl=document.getElementById('na-loc');
+  var maxEl=document.getElementById('na-max');
+  var thrEl=document.getElementById('na-thr');
+  if(!nameEl||!nameEl.value.trim()){ toast('Name required.','err'); return; }
+  S.addAssetBusy=true; render();
+  var id='A'+String(S.assets.length+1).padStart(3,'0');
+  var rec={id:id,name:nameEl.value.trim(),location:locEl?locEl.value:'',meter_max_value:+(maxEl?maxEl.value:9999),reset_count:0,stuck_reading:0,created_at:new Date().toISOString().slice(0,10),active_status:true,threshold_hours:+(thrEl?thrEl.value:200)};
+  var r=await DB.from('assets').insert(rec);
+  if(r.error){ toast(r.error.message,'err'); S.addAssetBusy=false; render(); return; }
+  S.assets.push(rec);
+  await logAudit('CREATE','Asset',id,'Created: '+rec.name);
+  toast('Asset '+id+' registered. ✓','ok');
+  S.addAssetOpen=false; S.addAssetBusy=false; render();
+}
+
+// MONTHLY ENTRY
+function handleEntryInput(assetId, val){
+  S.entryPending[assetId]=val;
+  var asset=S.assets.find(function(a){ return a.id===assetId; });
+  if(!asset) return;
+  if(val===''||isNaN(+val)||val.trim()===''){ S.entryResults[assetId]=null; }
+  else { S.entryResults[assetId]=validateReading(asset,S.readings,+val,S.entryMonth); }
+  // update validation cell
+  var valCell=document.getElementById('val-'+assetId);
+  var accCell=document.getElementById('acc-'+assetId);
+  var inpEl=document.getElementById('inp-'+assetId);
+  var res=S.entryResults[assetId];
+  if(valCell) valCell.innerHTML=res?badge(res.status)+'<div class="xs dim" style="margin-top:.15rem">'+esc(res.message)+'</div>':'<span class="dim xs">—</span>';
+  if(accCell){
+    var num=+val;
+    if(val!==''&&!isNaN(num)&&val.trim()!==''){
+      accCell.textContent=calcAcc(asset,num).toLocaleString()+' hrs';
+      accCell.style.color='#f59e0b';
+    } else { accCell.textContent='—'; accCell.style.color='var(--t3)'; }
+  }
+  if(inpEl&&res){
+    inpEl.className='inp-sm '+(res.status==='OK'?'inp-ok':res.status==='WARNING'?'inp-warn':'inp-crit');
+  } else if(inpEl){ inpEl.className='inp-sm'; }
+}
+
+async function saveAllReadings(){
+  var canEdit=(S.userRole==='admin'||S.userRole==='engineer')&&S.closed.indexOf(S.entryMonth)<0;
+  if(!canEdit){ toast('Month is locked or insufficient role.','err'); return; }
+  var count=0;
+  var newReadings=S.readings.slice();
+  for(var i=0;i<S.assets.length;i++){
+    var a=S.assets[i];
+    if(!a.active_status) continue;
+    // Get value from input first, then pending state
+    var inpEl=document.getElementById('inp-'+a.id);
+    var val=inpEl?inpEl.value:(S.entryPending[a.id]!==undefined?S.entryPending[a.id]:'');
+    if(val===''||val===undefined) continue;
+    var num=+val; if(isNaN(num)) continue;
+    var v=validateReading(a,newReadings,num,S.entryMonth);
+    var idx=-1;
+    for(var j=0;j<newReadings.length;j++){
+      if(newReadings[j].asset_id===a.id&&newReadings[j].month===S.entryMonth){ idx=j; break; }
     }
-    function Legend({keys,colors}){
-      return html`<div class="flex gap-4 flex-wrap mt-2">
-        ${keys.map((k,i)=>html`<div key=${k} class="flex items-center gap-1.5 text-[11px] text-zinc-400">
-          <div style=${{width:14,height:2,background:colors[i]||'#f59e0b',borderRadius:1}}></div>${k}
-        </div>`)}
-      </div>`;
-    }
+    var rec={id:idx>=0?newReadings[idx].id:uid(),asset_id:a.id,month:S.entryMonth,raw_meter_reading:num,locked:false,created_at:new Date().toISOString(),created_by:S.session.user.email,validation:v.status};
+    var r=await DB.from('monthly_readings').upsert(rec,{onConflict:'asset_id,month'});
+    if(r.error){ toast('Error on '+a.name+': '+r.error.message,'err'); continue; }
+    if(idx>=0){ newReadings[idx]=rec; } else { newReadings.push(rec); }
+    count++;
+  }
+  S.readings=newReadings;
+  S.entryPending={};
+  await logAudit('BULK_SAVE','MonthlyEntry',S.entryMonth,'Saved '+count+' readings for '+fmtMonth(S.entryMonth));
+  toast(count+' reading(s) saved. ✓','ok');
+  render();
+}
 
-    // ─── TOAST ───────────────────────────────────────────
-    function Toast({notif}){
-      if(!notif)return null;
-      const c=notif.type==='error'?'bg-red-950 border-red-700 text-red-200':notif.type==='success'?'bg-emerald-950 border-emerald-700 text-emerald-200':'bg-zinc-800 border-zinc-600 text-zinc-200';
-      return html`<div class=${'fixed top-4 right-4 z-50 px-5 py-3 rounded-lg text-sm font-mono border shadow-xl '+c}>${notif.msg}</div>`;
-    }
+// CLOSE MONTH
+async function closeMonth(){
+  if(S.userRole!=='admin'){ toast('Only Admin can close months.','err'); return; }
+  var r=await DB.from('closed_months').upsert({month:PREV_MONTH,closed_by:S.session.user.email});
+  if(r.error){ toast(r.error.message,'err'); return; }
+  if(S.closed.indexOf(PREV_MONTH)<0) S.closed.push(PREV_MONTH);
+  await logAudit('CLOSE_MONTH','Month',PREV_MONTH,'Closed '+fmtMonth(PREV_MONTH));
+  toast(fmtMonth(PREV_MONTH)+' locked. ✓','ok');
+}
 
-    // ─── SETUP SCREEN ────────────────────────────────────
-    function SetupScreen(){
-      return html`<div class="min-h-screen bg-zinc-950 flex items-center justify-center p-6" style=${{fontFamily:"'IBM Plex Mono',monospace"}}>
-        <div class="max-w-lg w-full bg-zinc-900 border border-amber-800/60 rounded-xl p-8">
-          <div class="flex items-center gap-3 mb-6">
-            <div class="w-10 h-10 bg-amber-500 rounded flex items-center justify-center text-zinc-950 font-bold text-xl">H</div>
-            <div><div class="text-amber-400 font-bold tracking-widest uppercase text-lg">HourTrack</div><div class="text-zinc-600 text-xs tracking-widest">Setup Required</div></div>
-          </div>
-          <div class="text-amber-400 text-sm font-bold mb-3">⚙ One-Time Configuration</div>
-          <p class="text-zinc-400 text-sm mb-4">Open <code class="text-amber-300 bg-zinc-800 px-1 rounded">index.html</code> in a text editor (Notepad works fine) and replace the two placeholder values near the top:</p>
-          <div class="bg-zinc-950 border border-zinc-700 rounded p-4 text-xs font-mono mb-4 space-y-1">
-            <div class="text-zinc-600">// Replace these two lines:</div>
-            <div class="text-amber-300">const SUPABASE_URL = 'YOUR_SUPABASE_URL_HERE';</div>
-            <div class="text-amber-300">const SUPABASE_KEY = 'YOUR_SUPABASE_ANON_KEY_HERE';</div>
-          </div>
-          <p class="text-zinc-500 text-xs">Find both values in your Supabase project: <strong class="text-zinc-300">Settings → API</strong></p>
-          <p class="text-zinc-500 text-xs mt-3">See the included <strong class="text-zinc-300">README.md</strong> for full step-by-step instructions.</p>
-        </div>
-      </div>`;
-    }
+// REPLACEMENTS
+function replNext(){
+  if(!S.replAssetId){ toast('Select an asset.','err'); return; }
+  var latest=null,best='';
+  S.readings.forEach(function(r){ if(r.asset_id===S.replAssetId&&r.month>best){ best=r.month;latest=r; } });
+  S.replLastReading=latest?String(latest.raw_meter_reading):'0';
+  S.replStep=1; render();
+}
+function replUpdatePreview(){
+  var el=document.querySelector('.inp');
+  if(el) S.replLastReading=el.value;
+  var prev=document.getElementById('repl-preview');
+  if(!prev) return;
+  var a=S.assets.find(function(x){ return x.id===S.replAssetId; });
+  if(!a) return;
+  var ns=a.stuck_reading+(+S.replLastReading);
+  prev.innerHTML='<div class="dim">reset_count: <span style="color:#e4e4e7">'+a.reset_count+'</span> → <span class="amber">'+(a.reset_count+1)+'</span></div>'+
+    '<div class="dim">new stuck_reading: <span class="amber">'+ns.toLocaleString()+' hrs</span></div>';
+}
+async function replConfirm(){
+  var a=S.assets.find(function(x){ return x.id===S.replAssetId; });
+  if(!a) return;
+  var newReset=a.reset_count+1, newStuck=a.stuck_reading+(+S.replLastReading);
+  var rl={id:uid(),asset_id:S.replAssetId,replacement_date:MONTHS[MONTHS.length-1],last_stuck_reading:+S.replLastReading,previous_reset_count:a.reset_count,new_reset_count:newReset,notes:S.replNotes};
+  var r1=await DB.from('replacement_logs').insert(rl);
+  var r2=await DB.from('assets').update({reset_count:newReset,stuck_reading:newStuck}).eq('id',S.replAssetId);
+  if(r1.error||r2.error){ toast('Save error — try again.','err'); return; }
+  S.repls.push(rl);
+  S.assets=S.assets.map(function(x){ return x.id===S.replAssetId?Object.assign({},x,{reset_count:newReset,stuck_reading:newStuck}):x; });
+  await logAudit('METER_REPLACEMENT','Asset',S.replAssetId,'Reset '+a.reset_count+'→'+newReset+'. Stuck: '+newStuck);
+  S.replConf={assetName:a.name,newReset:newReset,newStuck:newStuck};
+  S.replStep=2; render();
+  toast('Meter replacement logged. ✓','ok');
+}
+function replReset(){ S.replStep=0; S.replAssetId=''; S.replLastReading=''; S.replNotes=''; S.replConf=null; render(); }
 
-    // ─── LOGIN SCREEN ────────────────────────────────────
-    function LoginScreen(){
-      const [mode,setMode]=useState('login');
-      const [email,setEmail]=useState('');
-      const [password,setPassword]=useState('');
-      const [err,setErr]=useState('');
-      const [msg,setMsg]=useState('');
-      const [busy,setBusy]=useState(false);
+// USERS
+var _usersLoading=false;
+async function loadUsers(){
+  if(_usersLoading) return; _usersLoading=true;
+  var r=await DB.from('profiles').select('*').order('created_at');
+  S._users=r.data||[]; _usersLoading=false; render();
+}
+async function changeRole(userId,newRole){
+  var r=await DB.from('profiles').update({role:newRole}).eq('id',userId);
+  if(r.error){ toast(r.error.message,'err'); return; }
+  S._users=S._users.map(function(u){ return u.id===userId?Object.assign({},u,{role:newRole}):u; });
+  toast('Role updated. ✓','ok');
+  var tbody=document.querySelector('#main table tbody');
+  if(tbody){ var newContent=renderUsers(); document.getElementById('main').innerHTML=newContent; }
+}
 
-      const submit=async()=>{
-        setErr('');setBusy(true);
-        if(mode==='login'){
-          const {error}=await db.auth.signInWithPassword({email,password});
-          if(error)setErr(error.message);
-        } else {
-          const {error}=await db.auth.signUp({email,password});
-          if(error)setErr(error.message);
-          else setMsg('Account created! You can now sign in. (If email confirmation is enabled in Supabase, check your inbox first.)');
-        }
-        setBusy(false);
-      };
+// AUDIT EXPORT
+function exportAudit(){ exportCSV(S.audit,'audit-log.csv'); }
 
-      return html`<div class="min-h-screen bg-zinc-950 flex items-center justify-center p-6" style=${{fontFamily:"'IBM Plex Mono',monospace"}}>
-        <div class="w-full max-w-sm">
-          <div class="flex items-center gap-3 mb-8 justify-center">
-            <div class="w-10 h-10 bg-amber-500 rounded flex items-center justify-center text-zinc-950 font-bold text-lg">H</div>
-            <div>
-              <div class="text-amber-400 font-bold tracking-widest uppercase text-lg">HourTrack</div>
-              <div class="text-zinc-600 text-[10px] tracking-widest uppercase">Industrial Runtime Management</div>
-            </div>
-          </div>
-          <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
-            <div class="flex gap-1 mb-5 bg-zinc-950 rounded p-1">
-              ${['login','signup'].map(m=>html`<button key=${m} onClick=${()=>{setMode(m);setErr('');setMsg('');}}
-                class=${'flex-1 py-1.5 text-[11px] font-mono uppercase tracking-widest rounded transition-all '+(mode===m?'bg-amber-500 text-zinc-950':'text-zinc-500 hover:text-zinc-300')}>
-                ${m==='login'?'Sign In':'Sign Up'}
-              </button>`)}
-            </div>
-            ${msg?html`<div class="text-emerald-400 text-xs mb-4 p-3 bg-emerald-950/40 border border-emerald-800 rounded">${msg}</div>`:null}
-            ${err?html`<div class="text-red-400 text-xs mb-4 p-3 bg-red-950/40 border border-red-800 rounded">${err}</div>`:null}
-            <div class="space-y-3">
-              <div><label class="text-[10px] text-zinc-500 uppercase tracking-widest block mb-1">Email</label>
-                <input type="email" class=${S.input} value=${email} onInput=${e=>setEmail(e.target.value)} placeholder="you@company.com" onKeyDown=${e=>e.key==='Enter'&&submit()}/></div>
-              <div><label class="text-[10px] text-zinc-500 uppercase tracking-widest block mb-1">Password</label>
-                <input type="password" class=${S.input} value=${password} onInput=${e=>setPassword(e.target.value)} placeholder="••••••••" onKeyDown=${e=>e.key==='Enter'&&submit()}/></div>
-              <button onClick=${submit} disabled=${busy}
-                class=${'w-full py-2.5 rounded text-sm font-semibold tracking-wide transition-all '+(busy?'bg-zinc-700 text-zinc-500 cursor-not-allowed':'bg-amber-500 hover:bg-amber-400 text-zinc-950')}>
-                ${busy?'Please wait…':mode==='login'?'Sign In →':'Create Account →'}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>`;
-    }
+// LOG AUDIT
+async function logAudit(action,entity,entity_id,detail){
+  if(!S.session) return;
+  var e={id:uid(),timestamp:new Date().toISOString(),user_email:S.session.user.email,action:action,entity:entity,entity_id:entity_id,detail:detail};
+  await DB.from('audit_log').insert(e);
+  S.audit.unshift(e);
+}
 
-    // ─── ROOT APP ────────────────────────────────────────
-    function App(){
-      const [session,    setSession]    = useState(null);
-      const [userRole,   setUserRole]   = useState('viewer');
-      const [authReady,  setAuthReady]  = useState(false);
-      const [assets,     setAssets]     = useState([]);
-      const [readings,   setReadings]   = useState([]);
-      const [repls,      setRepls]      = useState([]);
-      const [audit,      setAudit]      = useState([]);
-      const [closed,     setClosed]     = useState(new Set());
-      const [loading,    setLoading]    = useState(false);
-      const [view,       setView]       = useState('dashboard');
-      const [detailId,   setDetailId]   = useState(null);
-      const [notif,      setNotif]      = useState(null);
+// REPORTS CSV EXPORT (called inline with data)
+function exportCSV(data,filename){
+  if(!data.length) return;
+  var keys=Object.keys(data[0]);
+  var rows=[keys.join(',')].concat(data.map(function(r){ return keys.map(function(k){ return '"'+(r[k]===null||r[k]===undefined?'':r[k])+'"'; }).join(','); }));
+  var a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(rows.join('\n'));
+  a.download=filename; a.click();
+}
 
-      useEffect(()=>{
-        db.auth.getSession().then(({data:{session}})=>{
-          setSession(session); setAuthReady(true);
-          if(session){loadProfile(session.user.id);loadData();}
-        });
-        const {data:{subscription}}=db.auth.onAuthStateChange((_,s)=>{
-          setSession(s);
-          if(s){loadProfile(s.user.id);loadData();}
-          else {setAssets([]);setReadings([]);setRepls([]);setAudit([]);}
-        });
-        return ()=>subscription.unsubscribe();
-      },[]);
-
-      const loadProfile=async id=>{
-        const {data}=await db.from('profiles').select('role').eq('id',id).single();
-        setUserRole(data?.role||'viewer');
-      };
-
-      const loadData=async()=>{
-        setLoading(true);
-        const [a,r,rl,al,cm]=await Promise.all([
-          db.from('assets').select('*').order('id'),
-          db.from('monthly_readings').select('*').order('month'),
-          db.from('replacement_logs').select('*').order('replacement_date'),
-          db.from('audit_log').select('*').order('timestamp',{ascending:false}).limit(300),
-          db.from('closed_months').select('month'),
-        ]);
-        setAssets(a.data||[]);
-        setReadings(r.data||[]);
-        setRepls(rl.data||[]);
-        setAudit(al.data||[]);
-        setClosed(new Set((cm.data||[]).map(x=>x.month)));
-        setLoading(false);
-      };
-
-      const notify=(msg,type='info')=>{setNotif({msg,type});setTimeout(()=>setNotif(null),4000);};
-      const go=(v,did=null)=>{setView(v);setDetailId(did);};
-      const logout=async()=>{ await db.auth.signOut(); };
-
-      const addAudit=useCallback(async(action,entity,entity_id,detail)=>{
-        const e={id:uid(),timestamp:new Date().toISOString(),user_email:session?.user?.email||'?',action,entity,entity_id,detail};
-        await db.from('audit_log').insert(e);
-        setAudit(p=>[e,...p]);
-      },[session]);
-
-      const currentMonth=MONTHS[MONTHS.length-1];
-      const prevMonth=MONTHS[MONTHS.length-2];
-
-      const stats=useMemo(()=>{
-        let w=0,c=0;
-        readings.filter(r=>r.month===currentMonth).forEach(r=>{if(r.validation==='WARNING')w++;if(r.validation==='CRITICAL')c++;});
-        return{total:assets.filter(a=>a.active_status).length,warnings:w,criticals:c};
-      },[assets,readings,currentMonth]);
-
-      if(!isConfigured) return html`<${SetupScreen}/>`;
-      if(!authReady) return html`<div style="color:#f59e0b;padding:2rem;font-family:'IBM Plex Mono',monospace;font-size:13px">◐ Connecting to database…</div>`;
-      if(!session) return html`<${LoginScreen}/>`;
-
-      const nav=[
-        {id:'dashboard',   label:'Dashboard'},
-        {id:'assets',      label:'Assets'},
-        {id:'entry',       label:'Monthly Entry'},
-        {id:'replacements',label:'Replacements'},
-        {id:'reports',     label:'Reports'},
-        {id:'audit',       label:'Audit Log'},
-        ...(userRole==='admin'?[{id:'users',label:'Users'}]:[]),
-      ];
-
-      const sp={assets,setAssets,readings,setReadings,repls,setRepls,closed,setClosed,userRole,notify,addAudit,go,detailId,setDetailId,currentMonth,prevMonth,db,session,loadData};
-
-      return html`<div class="min-h-screen bg-zinc-950 text-zinc-100" style=${{fontFamily:"'IBM Plex Mono',monospace"}}>
-        <${Toast} notif=${notif}/>
-        <header class="border-b border-zinc-800 bg-zinc-950 sticky top-0 z-40">
-          <div class="flex items-center justify-between px-4 py-3">
-            <div class="flex items-center gap-3">
-              <div class="w-8 h-8 bg-amber-500 rounded flex items-center justify-center text-zinc-950 font-bold">H</div>
-              <div>
-                <div class="text-sm font-semibold tracking-widest text-amber-400 uppercase">HourTrack</div>
-                <div class="text-[9px] text-zinc-600 tracking-widest uppercase hidden sm:block">Industrial Runtime Management</div>
-              </div>
-            </div>
-            <div class="flex items-center gap-2">
-              <span class=${'hidden sm:inline text-[10px] px-2 py-0.5 rounded border font-mono '+(userRole==='admin'?'border-amber-700 text-amber-400':userRole==='engineer'?'border-sky-700 text-sky-400':'border-zinc-700 text-zinc-500')}>
-                ${userRole.toUpperCase()}
-              </span>
-              <span class="hidden md:inline text-[10px] text-zinc-600 max-w-[140px] truncate">${session.user.email}</span>
-              <button onClick=${loadData} class="text-zinc-500 hover:text-zinc-200 text-xs border border-zinc-700 rounded px-2 py-1">↻ Sync</button>
-              <button onClick=${logout} class="text-zinc-500 hover:text-red-400 text-xs border border-zinc-700 rounded px-2 py-1">Sign Out</button>
-            </div>
-          </div>
-          <nav class="flex overflow-x-auto px-2">
-            ${nav.map(n=>html`<button key=${n.id} onClick=${()=>go(n.id)}
-              class=${'whitespace-nowrap px-3 py-2.5 text-[11px] font-mono tracking-widest uppercase border-b-2 transition-all '+(view===n.id?'border-amber-500 text-amber-400':'border-transparent text-zinc-500 hover:text-zinc-300')}>
-              ${n.label}
-            </button>`)}
-          </nav>
-        </header>
-        <main class="p-4 max-w-7xl mx-auto">
-          ${loading?html`<div class="flex items-center gap-2 text-zinc-500 text-sm py-10 justify-center"><span class="spin inline-block">◐</span><span>Syncing with database…</span></div>`:html`
-            ${view==='dashboard'    && html`<${Dashboard}    ...${sp} stats=${stats}/>`}
-            ${view==='assets'       && html`<${Assets}       ...${sp}/>`}
-            ${view==='entry'        && html`<${MonthlyEntry} ...${sp}/>`}
-            ${view==='replacements' && html`<${Replacements} ...${sp}/>`}
-            ${view==='reports'      && html`<${Reports}      ...${sp}/>`}
-            ${view==='audit'        && html`<${AuditLog}     audit=${audit}/>`}
-            ${view==='users' && userRole==='admin' && html`<${Users} db=${db} session=${session} notify=${notify}/>`}
-          `}
-        </main>
-      </div>`;
-    }
-
-    // ─── DASHBOARD ───────────────────────────────────────
-    function Dashboard({assets,readings,repls,stats,closed,setClosed,go,userRole,notify,addAudit,currentMonth,prevMonth,db,session}){
-      const closeMonth=async()=>{
-        if(userRole!=='admin'){notify('Only Admin can close months.','error');return;}
-        const {error}=await db.from('closed_months').upsert({month:prevMonth,closed_by:session.user.email});
-        if(error){notify(error.message,'error');return;}
-        setClosed(p=>new Set([...p,prevMonth]));
-        addAudit('CLOSE_MONTH','Month',prevMonth,`Closed ${fmtMonth(prevMonth)}`);
-        notify(`${fmtMonth(prevMonth)} locked. ✓`,'success');
-      };
-
-      const chartData=MONTHS.map(m=>({
-        label:fmtMonth(m),
-        ...(assets.slice(0,2).reduce((acc,a)=>{
-          const r=readings.find(rd=>rd.asset_id===a.id&&rd.month===m);
-          acc[a.name]=r?calcAcc(a,r.raw_meter_reading):null;
-          return acc;
-        },{}))
-      }));
-      const chartKeys=assets.slice(0,2).map(a=>a.name);
-
-      return html`<div class="space-y-5">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 class="text-xl font-bold tracking-widest text-zinc-100 uppercase">System Overview</h1>
-            <p class="text-xs text-zinc-500 mt-1">Period: ${fmtMonth(currentMonth)}</p>
-          </div>
-          <div class="flex gap-2 flex-wrap">
-            <button onClick=${()=>go('entry')}        class="${S.btn} ${S.btnP}">+ Reading</button>
-            <button onClick=${()=>go('replacements')} class="${S.btn} ${S.btnS}">↺ Replace</button>
-            <button onClick=${closeMonth}              class="${S.btn} ${S.btnS}">⊠ Close Month</button>
-            <button onClick=${()=>go('reports')}       class="${S.btn} ${S.btnS}">↓ Reports</button>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          ${[
-            {label:'Active Assets',  val:stats.total,            color:'text-amber-400'},
-            {label:'Warnings',       val:stats.warnings,         color:'text-amber-300'},
-            {label:'Critical',       val:stats.criticals,        color:'text-red-400'},
-            {label:'Current Period', val:fmtMonth(currentMonth), color:'text-emerald-400',sm:true},
-          ].map(c=>html`<div key=${c.label} class=${S.card}>
-            <div class="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">${c.label}</div>
-            <div class=${'font-bold '+(c.sm?'text-lg':'text-3xl')+' '+c.color}>${c.val}</div>
-          </div>`)}
-        </div>
-
-        ${assets.length===0?html`<div class="${S.card} border-amber-800/40">
-          <div class="text-amber-400 font-bold text-sm mb-2">👋 Welcome to HourTrack!</div>
-          <p class="text-zinc-400 text-sm">Start by adding your first asset. Go to the <button onClick=${()=>go('assets')} class="text-amber-400 underline">Assets</button> tab and click <strong>+ New Asset</strong>.</p>
-        </div>`:null}
-
-        ${assets.length>0?html`<div class=${S.card}>
-          <div class="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-4">Asset Runtime Status</div>
-          <div class="overflow-x-auto">
-            <table class="w-full min-w-[640px]">
-              <thead><tr>${['Asset','Latest Reading','Accumulated','Monthly Δ','Resets','Status',''].map(h=>html`<th key=${h} class=${S.th}>${h}</th>`)}</tr></thead>
-              <tbody>
-                ${assets.filter(a=>a.active_status).map(a=>{
-                  const srt=readings.filter(r=>r.asset_id===a.id).sort((x,y)=>y.month.localeCompare(x.month));
-                  const latest=srt[0],prev=srt[1];
-                  const acc=calcAcc(a,latest?.raw_meter_reading||0);
-                  const delta=latest&&prev?latest.raw_meter_reading-prev.raw_meter_reading:null;
-                  const v=latest?.validation||'OK';
-                  const pct=Math.min(100,(acc/(a.meter_max_value*5))*100);
-                  return html`<tr key=${a.id} class="hover:bg-zinc-800/40 cursor-pointer" onClick=${()=>go('assets',a.id)}>
-                    <td class=${S.td}><div class="font-semibold text-zinc-100">${a.name}</div><div class="text-[10px] text-zinc-600">${a.id} — ${a.location}</div></td>
-                    <td class=${S.td}>${latest?latest.raw_meter_reading.toLocaleString():'—'} hrs</td>
-                    <td class=${S.td}>
-                      <div class="text-amber-400 font-bold">${acc.toLocaleString()} hrs</div>
-                      <div class="w-24 h-1 bg-zinc-800 rounded mt-1 overflow-hidden"><div class=${'h-full rounded '+(pct>85?'bg-red-500':pct>60?'bg-amber-500':'bg-emerald-500')} style=${{width:pct+'%'}}></div></div>
-                    </td>
-                    <td class=${S.td}>${delta!==null?html`<span class=${delta>a.threshold_hours?'text-amber-400':'text-emerald-400'}>+${delta} hrs</span>`:'—'}</td>
-                    <td class="${S.td} text-zinc-500">${a.reset_count}×</td>
-                    <td class=${S.td}><span class=${S.badge(v)}>${v}</span></td>
-                    <td class="${S.td} text-zinc-600">→</td>
-                  </tr>`;
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>`:null}
-
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div class=${S.card}>
-            <div class="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-4">Recent Replacements</div>
-            ${repls.length===0
-              ?html`<p class="text-zinc-600 text-sm italic">No replacements logged yet.</p>`
-              :[...repls].reverse().slice(0,4).map(r=>{
-                  const a=assets.find(a=>a.id===r.asset_id);
-                  return html`<div key=${r.id} class="border-l-2 border-amber-700 pl-3 mb-3">
-                    <div class="text-sm text-zinc-200 font-semibold">${a?.name||r.asset_id}</div>
-                    <div class="text-xs text-zinc-500">${fmtMonth(r.replacement_date)} — Reset #${r.new_reset_count} — Stuck: ${r.last_stuck_reading?.toLocaleString()} hrs</div>
-                    <div class="text-[10px] text-zinc-600 italic mt-0.5">${r.notes}</div>
-                  </div>`;
-              })
-            }
-          </div>
-          <div class=${S.card}>
-            <div class="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-2">Accumulated Trend</div>
-            <${SvgChart} data=${chartData} keys=${chartKeys} colors=${['#f59e0b','#6ee7b7']} height=${160}/>
-            <${Legend} keys=${chartKeys} colors=${['#f59e0b','#6ee7b7']}/>
-          </div>
-        </div>
-      </div>`;
-    }
-
-    // ─── ASSETS ──────────────────────────────────────────
-    function Assets({assets,setAssets,readings,repls,userRole,notify,addAudit,detailId,setDetailId,db}){
-      const [showAdd,setShowAdd]=useState(false);
-      const [form,setForm]=useState({name:'',location:'',meter_max_value:9999,threshold_hours:200});
-      const [busy,setBusy]=useState(false);
-      const asset=detailId?assets.find(a=>a.id===detailId):null;
-
-      const addAsset=async()=>{
-        if(!form.name){notify('Name required.','error');return;}
-        setBusy(true);
-        const id=`A${String(assets.length+1).padStart(3,'0')}`;
-        const rec={id,name:form.name,location:form.location,meter_max_value:+form.meter_max_value,reset_count:0,stuck_reading:0,created_at:new Date().toISOString().slice(0,10),active_status:true,threshold_hours:+form.threshold_hours};
-        const {error}=await db.from('assets').insert(rec);
-        if(error){notify(error.message,'error');setBusy(false);return;}
-        setAssets(p=>[...p,rec]);
-        addAudit('CREATE','Asset',id,`Created: ${form.name}`);
-        notify(`Asset ${id} registered. ✓`,'success');
-        setShowAdd(false);setForm({name:'',location:'',meter_max_value:9999,threshold_hours:200});
-        setBusy(false);
-      };
-
-      if(asset){
-        const ar=readings.filter(r=>r.asset_id===asset.id).sort((a,b)=>a.month.localeCompare(b.month));
-        const latest=ar[ar.length-1];
-        const acc=calcAcc(asset,latest?.raw_meter_reading||0);
-        const assetRepls=repls.filter(r=>r.asset_id===asset.id);
-        const chartData=ar.map((r,i)=>({label:fmtMonth(r.month),'Accumulated':calcAcc(asset,r.raw_meter_reading),'Monthly Δ':i>0?r.raw_meter_reading-ar[i-1].raw_meter_reading:0}));
-        return html`<div class="space-y-5">
-          <div class="flex items-center gap-3">
-            <button onClick=${()=>setDetailId(null)} class="${S.btn} ${S.btnS} text-xs">← Back</button>
-            <div><h1 class="text-lg font-bold uppercase tracking-widest text-zinc-100">${asset.name}</h1><p class="text-xs text-zinc-500">${asset.id} — ${asset.location}</p></div>
-          </div>
-          <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            ${[['Accumulated Runtime',`${acc.toLocaleString()} hrs`,'text-amber-400'],['Reset Count',asset.reset_count,'text-sky-400'],['Stuck Reading',`${asset.stuck_reading.toLocaleString()} hrs`,'text-zinc-300'],['Latest Raw',latest?`${latest.raw_meter_reading.toLocaleString()} hrs`:'—','text-zinc-300']].map(([l,v,c])=>html`
-              <div key=${l} class=${S.card}><div class="text-[10px] uppercase tracking-widest text-zinc-500 mb-1">${l}</div><div class=${'text-2xl font-bold '+c}>${v}</div></div>`)}
-          </div>
-          <div class="${S.card} border-amber-900/40">
-            <div class="text-[10px] uppercase tracking-widest text-amber-500 mb-2 font-bold">Runtime Formula</div>
-            <div class="text-sm text-zinc-400 font-mono flex flex-wrap gap-1 items-center">
-              <span class="text-sky-400">${asset.reset_count}</span><span class="text-zinc-600"> × </span>
-              <span class="text-zinc-300">${asset.meter_max_value.toLocaleString()}</span><span class="text-zinc-600"> + </span>
-              <span class="text-zinc-300">${asset.stuck_reading.toLocaleString()}</span><span class="text-zinc-600"> + </span>
-              <span class="text-zinc-300">${latest?.raw_meter_reading||0}</span><span class="text-zinc-600"> = </span>
-              <span class="text-amber-400 font-bold">${acc.toLocaleString()} hrs</span>
-            </div>
-          </div>
-          <div class=${S.card}>
-            <div class="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-2">Runtime Trend</div>
-            <${SvgChart} data=${chartData} keys=${['Accumulated','Monthly Δ']} colors=${['#f59e0b','#6ee7b7']} height=${200}/>
-            <${Legend} keys=${['Accumulated hrs','Monthly Δ hrs']} colors=${['#f59e0b','#6ee7b7']}/>
-            ${assetRepls.length?html`<p class="text-[10px] text-sky-400 mt-2">Meter resets: ${assetRepls.map(r=>fmtMonth(r.replacement_date)).join(', ')}</p>`:null}
-          </div>
-          <div class=${S.card}>
-            <div class="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-3">Reading History</div>
-            <div class="overflow-x-auto">
-              <table class="w-full min-w-[500px]">
-                <thead><tr>${['Month','Raw','Monthly Δ','Accumulated','Status','Locked','By'].map(h=>html`<th key=${h} class=${S.th}>${h}</th>`)}</tr></thead>
-                <tbody>${ar.map((r,i)=>{const prev=ar[i-1],delta=prev?r.raw_meter_reading-prev.raw_meter_reading:null;return html`<tr key=${r.id} class="hover:bg-zinc-800/30">
-                  <td class=${S.td}>${fmtMonth(r.month)}</td>
-                  <td class=${S.td}>${r.raw_meter_reading.toLocaleString()} hrs</td>
-                  <td class=${S.td}>${delta!==null?html`<span class=${delta<0?'text-red-400':delta>asset.threshold_hours?'text-amber-400':'text-emerald-400'}>+${delta}</span>`:'—'}</td>
-                  <td class="${S.td} text-amber-400">${calcAcc(asset,r.raw_meter_reading).toLocaleString()}</td>
-                  <td class=${S.td}><span class=${S.badge(r.validation)}>${r.validation}</span></td>
-                  <td class=${S.td}>${r.locked?html`<span class="text-zinc-500 text-xs">🔒 Locked</span>`:html`<span class="text-emerald-500 text-xs">Open</span>`}</td>
-                  <td class="${S.td} text-zinc-600 text-xs">${r.created_by}</td>
-                </tr>`;})}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>`;
-      }
-
-      return html`<div class="space-y-5">
-        <div class="flex items-center justify-between">
-          <h1 class="text-xl font-bold uppercase tracking-widest text-zinc-100">Asset Registry</h1>
-          ${(userRole==='admin'||userRole==='engineer')?html`<button onClick=${()=>setShowAdd(!showAdd)} class="${S.btn} ${S.btnP}">+ New Asset</button>`:null}
-        </div>
-        ${showAdd?html`<div class="${S.card} border-amber-800/60">
-          <div class="text-xs uppercase tracking-widest text-amber-400 mb-4 font-bold">Register New Asset</div>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div><label class="text-[10px] text-zinc-500 uppercase tracking-widest block mb-1">Name *</label><input class=${S.input} value=${form.name} onInput=${e=>setForm(p=>({...p,name:e.target.value}))} placeholder="Compressor Unit #1"/></div>
-            <div><label class="text-[10px] text-zinc-500 uppercase tracking-widest block mb-1">Location</label><input class=${S.input} value=${form.location} onInput=${e=>setForm(p=>({...p,location:e.target.value}))} placeholder="Building A — Bay 3"/></div>
-            <div><label class="text-[10px] text-zinc-500 uppercase tracking-widest block mb-1">Meter Max Value</label><input type="number" class=${S.input} value=${form.meter_max_value} onInput=${e=>setForm(p=>({...p,meter_max_value:e.target.value}))}/></div>
-            <div><label class="text-[10px] text-zinc-500 uppercase tracking-widest block mb-1">Monthly Threshold (hrs)</label><input type="number" class=${S.input} value=${form.threshold_hours} onInput=${e=>setForm(p=>({...p,threshold_hours:e.target.value}))}/></div>
-          </div>
-          <div class="flex gap-2 mt-4">
-            <button onClick=${addAsset} disabled=${busy} class="${S.btn} ${S.btnP}">${busy?'Saving…':'Register Asset'}</button>
-            <button onClick=${()=>setShowAdd(false)} class="${S.btn} ${S.btnS}">Cancel</button>
-          </div>
-        </div>`:null}
-        ${assets.length===0?html`<div class="${S.card}"><p class="text-zinc-500 text-sm italic">No assets yet. Add your first asset to get started.</p></div>`:html`
-        <div class=${S.card}>
-          <div class="overflow-x-auto">
-            <table class="w-full min-w-[600px]">
-              <thead><tr>${['ID','Name','Location','Meter Max','Resets','Threshold','Status',''].map(h=>html`<th key=${h} class=${S.th}>${h}</th>`)}</tr></thead>
-              <tbody>${assets.map(a=>html`<tr key=${a.id} class="hover:bg-zinc-800/40 cursor-pointer" onClick=${()=>setDetailId(a.id)}>
-                <td class="${S.td} text-amber-400">${a.id}</td>
-                <td class="${S.td} font-semibold text-zinc-100">${a.name}</td>
-                <td class="${S.td} text-zinc-500 text-xs">${a.location}</td>
-                <td class=${S.td}>${a.meter_max_value.toLocaleString()}</td>
-                <td class=${S.td}>${a.reset_count}</td>
-                <td class=${S.td}>${a.threshold_hours} hrs/mo</td>
-                <td class=${S.td}><span class=${'text-[10px] px-2 py-0.5 rounded border '+(a.active_status?'bg-emerald-900/40 text-emerald-400 border-emerald-800':'bg-zinc-800 text-zinc-500 border-zinc-700')}>${a.active_status?'ACTIVE':'INACTIVE'}</span></td>
-                <td class="${S.td} text-zinc-600">→</td>
-              </tr>`)}</tbody>
-            </table>
-          </div>
-        </div>`}
-      </div>`;
-    }
-
-    // ─── MONTHLY ENTRY ───────────────────────────────────
-    function MonthlyEntry({assets,readings,setReadings,closed,userRole,notify,addAudit,currentMonth,db,session}){
-      const [selMonth,setSelMonth]=useState(currentMonth);
-      const [vals,setVals]=useState({});
-      const [res,setRes]=useState({});
-      const [busy,setBusy]=useState(false);
-      const isLocked=closed.has(selMonth);
-      const canEdit=(userRole==='admin'||userRole==='engineer')&&!isLocked;
-
-      useEffect(()=>{
-        const init={};
-        assets.forEach(a=>{const ex=readings.find(r=>r.asset_id===a.id&&r.month===selMonth);if(ex)init[a.id]=String(ex.raw_meter_reading);});
-        setVals(init);setRes({});
-      },[selMonth,readings]);
-
-      const handleChange=(aid,val)=>{
-        setVals(p=>({...p,[aid]:val}));
-        const asset=assets.find(a=>a.id===aid);
-        if(val!==''&&!isNaN(val))setRes(p=>({...p,[aid]:validate(asset,readings,+val,selMonth)}));
-      };
-
-      const submit=async()=>{
-        if(!canEdit){notify('Month is locked or insufficient role.','error');return;}
-        setBusy(true);
-        let count=0;
-        const newReadings=[...readings];
-        for(const a of assets){
-          const val=vals[a.id];if(val===undefined||val==='')continue;
-          const num=+val;if(isNaN(num))continue;
-          const v=validate(a,newReadings,num,selMonth);
-          const idx=newReadings.findIndex(r=>r.asset_id===a.id&&r.month===selMonth);
-          const rec={id:idx>=0?newReadings[idx].id:uid(),asset_id:a.id,month:selMonth,raw_meter_reading:num,locked:false,created_at:new Date().toISOString(),created_by:session.user.email,validation:v.status};
-          const {error}=await db.from('monthly_readings').upsert(rec,{onConflict:'asset_id,month'});
-          if(error){notify(`Error saving ${a.name}: ${error.message}`,'error');continue;}
-          if(idx>=0){newReadings[idx]=rec;addAudit('EDIT','MonthlyReading',rec.id,`Updated to ${num}`);}
-          else{newReadings.push(rec);addAudit('CREATE','MonthlyReading',rec.id,`New reading ${num} for ${fmtMonth(selMonth)}`);}
-          count++;
-        }
-        setReadings(newReadings);
-        notify(`${count} reading(s) saved. ✓`,'success');
-        setBusy(false);
-      };
-
-      return html`<div class="space-y-5">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <div><h1 class="text-xl font-bold uppercase tracking-widest text-zinc-100">Monthly Entry</h1><p class="text-xs text-zinc-500 mt-1">Record meter readings for all assets</p></div>
-          <div class="flex items-center gap-3 flex-wrap">
-            <select value=${selMonth} onChange=${e=>setSelMonth(e.target.value)} class="bg-zinc-900 border border-zinc-700 text-zinc-200 text-sm font-mono rounded px-3 py-2 focus:outline-none focus:border-amber-500">
-              ${MONTHS.map(m=>html`<option key=${m} value=${m}>${fmtMonth(m)}</option>`)}
-            </select>
-            ${isLocked?html`<span class="text-xs text-zinc-500 border border-zinc-700 rounded px-3 py-2">🔒 Locked</span>`:null}
-            ${canEdit?html`<button onClick=${submit} disabled=${busy} class="${S.btn} ${S.btnP}">${busy?'Saving…':'Save All'}</button>`:null}
-          </div>
-        </div>
-        ${isLocked&&userRole==='admin'?html`<div class="border border-amber-800/60 rounded p-3 bg-amber-950/20 text-xs text-amber-400">⚠ Month is closed. Admin edits are audited.</div>`:null}
-        ${assets.length===0?html`<div class="${S.card}"><p class="text-zinc-500 text-sm italic">No assets yet — add assets first from the Assets tab.</p></div>`:html`
-        <div class=${S.card}>
-          <div class="overflow-x-auto">
-            <table class="w-full min-w-[600px]">
-              <thead><tr>${['Asset','Prev Reading','New Reading','Validation','Accumulated'].map(h=>html`<th key=${h} class=${S.th}>${h}</th>`)}</tr></thead>
-              <tbody>${assets.filter(a=>a.active_status).map(a=>{
-                const prev=readings.filter(r=>r.asset_id===a.id&&r.month<selMonth).sort((x,y)=>y.month.localeCompare(x.month))[0];
-                const val=vals[a.id]||'',r=res[a.id];
-                const acc=val!==''&&!isNaN(val)?calcAcc(a,+val):null;
-                const bord=r?(r.status==='OK'?'border-emerald-700':r.status==='WARNING'?'border-amber-600':'border-red-600'):'border-zinc-700';
-                return html`<tr key=${a.id} class="border-t border-zinc-800/60 hover:bg-zinc-800/20">
-                  <td class="px-3 py-3"><div class="text-sm font-semibold text-zinc-100">${a.name}</div><div class="text-[10px] text-zinc-600">${a.id}</div></td>
-                  <td class="px-3 py-3 font-mono text-sm text-zinc-400">${prev?prev.raw_meter_reading.toLocaleString():'—'}</td>
-                  <td class="px-3 py-3"><input type="number" min="0" class=${'bg-zinc-900 border text-zinc-100 rounded px-3 py-2 text-sm font-mono focus:outline-none w-32 '+bord} value=${val} onInput=${e=>handleChange(a.id,e.target.value)} disabled=${!canEdit} placeholder="hrs"/></td>
-                  <td class="px-3 py-3">${r?html`<div><span class=${S.badge(r.status)}>${r.status}</span><div class="text-[10px] text-zinc-500 mt-1">${r.message}</div></div>`:html`<span class="text-zinc-700 text-xs">—</span>`}</td>
-                  <td class="px-3 py-3 font-mono text-amber-400 font-bold">${acc!==null?`${acc.toLocaleString()} hrs`:'—'}</td>
-                </tr>`;
-              })}</tbody>
-            </table>
-          </div>
-        </div>`}
-      </div>`;
-    }
-
-    // ─── REPLACEMENTS ────────────────────────────────────
-    function Replacements({assets,setAssets,repls,setRepls,readings,userRole,notify,addAudit,db,session}){
-      const [step,setStep]=useState(0);
-      const [form,setForm]=useState({asset_id:'',last_reading:'',notes:''});
-      const [confirmed,setConfirmed]=useState(null);
-      const [busy,setBusy]=useState(false);
-      const canEdit=userRole==='admin'||userRole==='engineer';
-
-      const start=()=>{
-        if(!form.asset_id){notify('Select an asset.','error');return;}
-        const latest=readings.filter(r=>r.asset_id===form.asset_id).sort((a,b)=>b.month.localeCompare(a.month))[0];
-        setForm(p=>({...p,last_reading:latest?.raw_meter_reading||0}));setStep(1);
-      };
-
-      const confirm=async()=>{
-        setBusy(true);
-        const a=assets.find(a=>a.id===form.asset_id);
-        const newReset=a.reset_count+1,newStuck=a.stuck_reading+(+form.last_reading);
-        const rl={id:uid(),asset_id:form.asset_id,replacement_date:MONTHS[MONTHS.length-1],last_stuck_reading:+form.last_reading,previous_reset_count:a.reset_count,new_reset_count:newReset,notes:form.notes};
-        const [r1,r2]=await Promise.all([
-          db.from('replacement_logs').insert(rl),
-          db.from('assets').update({reset_count:newReset,stuck_reading:newStuck}).eq('id',form.asset_id),
-        ]);
-        if(r1.error||r2.error){notify('Save error — try again.','error');setBusy(false);return;}
-        setRepls(p=>[...p,rl]);
-        setAssets(p=>p.map(x=>x.id===form.asset_id?{...x,reset_count:newReset,stuck_reading:newStuck}:x));
-        addAudit('METER_REPLACEMENT','Asset',form.asset_id,`Reset ${a.reset_count}→${newReset}. Stuck: ${newStuck}`);
-        setConfirmed({asset:a,rl,newReset,newStuck});setStep(2);
-        notify('Meter replacement logged. ✓','success');setBusy(false);
-      };
-
-      const a=assets.find(x=>x.id===form.asset_id);
-
-      return html`<div class="space-y-5">
-        <h1 class="text-xl font-bold uppercase tracking-widest text-zinc-100">Meter Replacements</h1>
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          <div class="space-y-4">
-            <div class="flex items-center gap-2">
-              ${['Select','Confirm','Done'].map((s,i)=>html`<span key=${s} class="flex items-center gap-2">
-                <span class=${'w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border '+(step>=i?'bg-amber-500 border-amber-500 text-zinc-950':'bg-zinc-900 border-zinc-700 text-zinc-600')}>${i+1}</span>
-                <span class=${'text-[11px] tracking-widest uppercase '+(step>=i?'text-zinc-300':'text-zinc-600')}>${s}</span>
-                ${i<2?html`<span class=${'w-6 h-px '+(step>i?'bg-amber-500':'bg-zinc-700')}></span>`:null}
-              </span>`)}
-            </div>
-            ${step===0?html`<div class="${S.card} border-amber-900/40">
-              <div class="text-xs uppercase tracking-widest text-amber-400 mb-3 font-bold">Step 1 — Select Asset</div>
-              <div class="space-y-3">
-                <div><label class="text-[10px] text-zinc-500 uppercase tracking-widest block mb-1">Asset</label>
-                  <select value=${form.asset_id} onChange=${e=>setForm(p=>({...p,asset_id:e.target.value}))} class=${S.input}>
-                    <option value="">— Select —</option>
-                    ${assets.filter(a=>a.active_status).map(a=>html`<option key=${a.id} value=${a.id}>${a.name} (${a.id})</option>`)}
-                  </select></div>
-                <div><label class="text-[10px] text-zinc-500 uppercase tracking-widest block mb-1">Notes</label>
-                  <textarea class=${S.input} rows="2" value=${form.notes} onInput=${e=>setForm(p=>({...p,notes:e.target.value}))} placeholder="Reason for replacement…"></textarea></div>
-                ${canEdit?html`<button onClick=${start} class="${S.btn} ${S.btnP} w-full">Next →</button>`:html`<div class="text-xs text-zinc-600">Insufficient role.</div>`}
-              </div>
-            </div>`:null}
-            ${step===1&&a?html`<div class="${S.card} border-amber-900/40">
-              <div class="text-xs uppercase tracking-widest text-amber-400 mb-3 font-bold">Step 2 — Confirm Last Reading</div>
-              <div class="space-y-3">
-                <div><label class="text-[10px] text-zinc-500 uppercase tracking-widest block mb-1">Last Raw Reading (captured as stuck reading)</label>
-                  <input type="number" class=${S.input} value=${form.last_reading} onInput=${e=>setForm(p=>({...p,last_reading:e.target.value}))}/></div>
-                <div class="bg-zinc-950/60 border border-zinc-800 rounded p-3 text-xs font-mono space-y-1">
-                  <div class="text-zinc-500">reset_count: <span class="text-zinc-300">${a.reset_count}</span> → <span class="text-amber-400">${a.reset_count+1}</span></div>
-                  <div class="text-zinc-500">new stuck_reading: <span class="text-amber-400">${(a.stuck_reading+(+form.last_reading)).toLocaleString()} hrs</span></div>
-                </div>
-                <div class="flex gap-2">
-                  <button onClick=${()=>setStep(0)} class="${S.btn} ${S.btnS}">← Back</button>
-                  <button onClick=${confirm} disabled=${busy} class="${S.btn} bg-red-900 hover:bg-red-800 text-red-200 border border-red-700">${busy?'Saving…':'Confirm Reset'}</button>
-                </div>
-              </div>
-            </div>`:null}
-            ${step===2&&confirmed?html`<div class="${S.card} border-emerald-800/60">
-              <div class="text-xs uppercase tracking-widest text-emerald-400 mb-3 font-bold">✓ Replacement Logged</div>
-              <div class="text-sm font-mono text-zinc-400 space-y-1">
-                <div>Asset: <span class="text-zinc-100">${confirmed.asset.name}</span></div>
-                <div>New Reset Count: <span class="text-amber-400">${confirmed.newReset}</span></div>
-                <div>Total Stuck: <span class="text-amber-400">${confirmed.newStuck.toLocaleString()} hrs</span></div>
-              </div>
-              <button onClick=${()=>{setStep(0);setForm({asset_id:'',last_reading:'',notes:''});setConfirmed(null);}} class="${S.btn} ${S.btnP} mt-4">Log Another</button>
-            </div>`:null}
-          </div>
-          <div class=${S.card}>
-            <div class="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-3">Replacement Log</div>
-            ${repls.length===0?html`<p class="text-zinc-600 text-sm italic">No replacements yet.</p>`:html`
-            <div class="overflow-x-auto">
-              <table class="w-full min-w-[400px]">
-                <thead><tr>${['Date','Asset','Stuck Rdg','Reset #','Notes'].map(h=>html`<th key=${h} class=${S.th}>${h}</th>`)}</tr></thead>
-                <tbody>${[...repls].reverse().map(r=>{const a=assets.find(a=>a.id===r.asset_id);return html`<tr key=${r.id} class="hover:bg-zinc-800/30">
-                  <td class=${S.td}>${fmtMonth(r.replacement_date)}</td>
-                  <td class=${S.td}><div class="text-zinc-100">${a?.name||r.asset_id}</div><div class="text-[10px] text-zinc-600">${r.asset_id}</div></td>
-                  <td class="${S.td} text-amber-400">${r.last_stuck_reading?.toLocaleString()}</td>
-                  <td class=${S.td}>${r.previous_reset_count}→<span class="text-sky-400">${r.new_reset_count}</span></td>
-                  <td class="${S.td} text-zinc-500 text-xs">${r.notes}</td>
-                </tr>`;})}</tbody>
-              </table>
-            </div>`}
-          </div>
-        </div>
-      </div>`;
-    }
-
-    // ─── REPORTS ─────────────────────────────────────────
-    function Reports({assets,readings}){
-      const [selMonth,setSelMonth]=useState(MONTHS[MONTHS.length-1]);
-      const colors=['#f59e0b','#6ee7b7','#38bdf8','#f472b6'];
-      const report=assets.map(a=>{
-        const r=readings.find(rd=>rd.asset_id===a.id&&rd.month===selMonth);
-        const prev=readings.filter(rd=>rd.asset_id===a.id&&rd.month<selMonth).sort((x,y)=>y.month.localeCompare(x.month))[0];
-        return{id:a.id,name:a.name,location:a.location,raw_reading:r?.raw_meter_reading??'N/A',monthly_delta:r&&prev?r.raw_meter_reading-prev.raw_meter_reading:null,accumulated_runtime:calcAcc(a,r?.raw_meter_reading||0),threshold_hrs:a.threshold_hours,status:r?.validation??'N/A'};
-      });
-      const trendData=MONTHS.map(m=>{const e={label:fmtMonth(m)};assets.forEach(a=>{const r=readings.find(rd=>rd.asset_id===a.id&&rd.month===m);e[a.name]=r?calcAcc(a,r.raw_meter_reading):null;});return e;});
-      return html`<div class="space-y-5">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <h1 class="text-xl font-bold uppercase tracking-widest text-zinc-100">Reports</h1>
-          <div class="flex gap-2 flex-wrap">
-            <select value=${selMonth} onChange=${e=>setSelMonth(e.target.value)} class="bg-zinc-900 border border-zinc-700 text-zinc-200 text-sm font-mono rounded px-3 py-2 focus:outline-none focus:border-amber-500">
-              ${MONTHS.map(m=>html`<option key=${m} value=${m}>${fmtMonth(m)}</option>`)}
-            </select>
-            <button onClick=${()=>exportCSV(report,`runtime-${selMonth}.csv`)} class="${S.btn} ${S.btnS}">↓ CSV Export</button>
-          </div>
-        </div>
-        <div class=${S.card}>
-          <div class="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-3">Monthly Report — ${fmtMonth(selMonth)}</div>
-          <div class="overflow-x-auto">
-            <table class="w-full min-w-[600px]">
-              <thead><tr>${['Asset','Raw Reading','Monthly Δ','Accumulated','Threshold','Status'].map(h=>html`<th key=${h} class=${S.th}>${h}</th>`)}</tr></thead>
-              <tbody>${report.map(r=>html`<tr key=${r.id} class="hover:bg-zinc-800/30">
-                <td class=${S.td}><div class="font-semibold text-zinc-100">${r.name}</div><div class="text-[10px] text-zinc-600">${r.id} — ${r.location}</div></td>
-                <td class="${S.td} font-mono">${typeof r.raw_reading==='number'?r.raw_reading.toLocaleString():r.raw_reading} hrs</td>
-                <td class="${S.td} font-mono">${typeof r.monthly_delta==='number'?html`<span class=${r.monthly_delta>r.threshold_hrs?'text-amber-400':'text-emerald-400'}>+${r.monthly_delta}</span>`:'—'}</td>
-                <td class="${S.td} text-amber-400 font-bold">${r.accumulated_runtime.toLocaleString()} hrs</td>
-                <td class="${S.td} text-zinc-500">${r.threshold_hrs} hrs/mo</td>
-                <td class=${S.td}><span class=${S.badge(r.status)}>${r.status}</span></td>
-              </tr>`)}</tbody>
-            </table>
-          </div>
-        </div>
-        <div class=${S.card}>
-          <div class="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-2">All-Asset Accumulated Runtime Trend</div>
-          <${SvgChart} data=${trendData} keys=${assets.map(a=>a.name)} colors=${colors} height=${260}/>
-          <${Legend} keys=${assets.map(a=>a.name)} colors=${colors}/>
-        </div>
-        <div class=${S.card}>
-          <div class="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-3">Threshold Alerts — ${fmtMonth(selMonth)}</div>
-          ${report.filter(r=>typeof r.monthly_delta==='number'&&r.monthly_delta>r.threshold_hrs).length===0
-            ?html`<p class="text-zinc-600 text-sm">No assets exceeded threshold this month. ✓</p>`
-            :report.filter(r=>typeof r.monthly_delta==='number'&&r.monthly_delta>r.threshold_hrs).map(r=>html`<div key=${r.id} class="flex items-center gap-3 border border-amber-800/50 rounded p-3 bg-amber-950/20 mb-2">
-              <span class="text-amber-400">⚠</span>
-              <div class="flex-1"><span class="text-amber-300 font-semibold text-sm">${r.name}</span><span class="text-zinc-500 text-xs ml-2">ran ${r.monthly_delta} hrs vs ${r.threshold_hrs} hr limit</span></div>
-              <span class=${S.badge('WARNING')}>+${r.monthly_delta-r.threshold_hrs} over</span>
-            </div>`)
-          }
-        </div>
-      </div>`;
-    }
-
-    // ─── AUDIT LOG ───────────────────────────────────────
-    function AuditLog({audit}){
-      const colors={CREATE:'text-emerald-400',EDIT:'text-amber-400',DELETE:'text-red-400',LOCK:'text-sky-400',UNLOCK:'text-amber-300',CLOSE_MONTH:'text-purple-400',METER_REPLACEMENT:'text-orange-400'};
-      return html`<div class="space-y-5">
-        <div class="flex items-center justify-between">
-          <h1 class="text-xl font-bold uppercase tracking-widest text-zinc-100">Audit Log</h1>
-          <button onClick=${()=>exportCSV(audit,'audit-log.csv')} class="${S.btn} ${S.btnS}">↓ Export CSV</button>
-        </div>
-        <div class=${S.card}>
-          <div class="overflow-x-auto">
-            <table class="w-full min-w-[600px]">
-              <thead><tr>${['Timestamp','User','Action','Entity','Record','Detail'].map(h=>html`<th key=${h} class=${S.th}>${h}</th>`)}</tr></thead>
-              <tbody>${audit.map(e=>html`<tr key=${e.id} class="hover:bg-zinc-800/30">
-                <td class="${S.td} text-zinc-500 text-xs">${new Date(e.timestamp).toLocaleString()}</td>
-                <td class="${S.td} text-zinc-300 text-xs">${e.user_email}</td>
-                <td class=${S.td}><span class=${'text-[11px] font-bold '+(colors[e.action]||'text-zinc-400')}>${e.action}</span></td>
-                <td class="${S.td} text-zinc-500 text-xs">${e.entity}</td>
-                <td class="${S.td} text-zinc-600 text-xs font-mono">${e.entity_id}</td>
-                <td class="${S.td} text-zinc-400 text-xs">${e.detail}</td>
-              </tr>`)}</tbody>
-            </table>
-          </div>
-        </div>
-      </div>`;
-    }
-
-    // ─── USERS (Admin only) ───────────────────────────────
-    function Users({db,session,notify}){
-      const [users,setUsers]=useState([]);
-      const [loading,setLoading]=useState(true);
-
-      useEffect(()=>{
-        db.from('profiles').select('*').order('created_at').then(({data})=>{setUsers(data||[]);setLoading(false);});
-      },[]);
-
-      const changeRole=async(userId,newRole)=>{
-        const{error}=await db.from('profiles').update({role:newRole}).eq('id',userId);
-        if(error){notify(error.message,'error');return;}
-        setUsers(p=>p.map(u=>u.id===userId?{...u,role:newRole}:u));
-        notify('Role updated. ✓','success');
-      };
-
-      return html`<div class="space-y-5">
-        <h1 class="text-xl font-bold uppercase tracking-widest text-zinc-100">User Management</h1>
-        <div class=${S.card}>
-          ${loading?html`<p class="text-zinc-500 text-sm">Loading users…</p>`:html`
-          <div class="overflow-x-auto">
-            <table class="w-full min-w-[500px]">
-              <thead><tr>${['Email','Role','Joined','Change Role'].map(h=>html`<th key=${h} class=${S.th}>${h}</th>`)}</tr></thead>
-              <tbody>${users.map(u=>html`<tr key=${u.id} class="hover:bg-zinc-800/30">
-                <td class=${S.td}><span class=${u.id===session.user.id?'text-amber-400 font-semibold':'text-zinc-200'}>${u.email}${u.id===session.user.id?' (you)':''}</span></td>
-                <td class=${S.td}><span class=${'text-[10px] px-2 py-0.5 rounded border font-bold '+(u.role==='admin'?'border-amber-700 text-amber-400':u.role==='engineer'?'border-sky-700 text-sky-400':'border-zinc-700 text-zinc-500')}>${u.role.toUpperCase()}</span></td>
-                <td class="${S.td} text-zinc-500 text-xs">${new Date(u.created_at).toLocaleDateString()}</td>
-                <td class=${S.td}>
-                  ${u.id!==session.user.id?html`<select value=${u.role} onChange=${e=>changeRole(u.id,e.target.value)} class="bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs font-mono rounded px-2 py-1 focus:outline-none">
-                    <option value="viewer">Viewer — read only</option>
-                    <option value="engineer">Engineer — can add readings</option>
-                    <option value="admin">Admin — full access</option>
-                  </select>`:html`<span class="text-zinc-600 text-xs">Cannot change own role</span>`}
-                </td>
-              </tr>`)}</tbody>
-            </table>
-          </div>`}
-        </div>
-        <div class="${S.card} border-zinc-800/60">
-          <div class="text-xs uppercase tracking-widest text-zinc-400 mb-2 font-bold">How Team Members Join</div>
-          <p class="text-zinc-500 text-sm">Share your app URL with colleagues. They sign up from the login page and automatically get <span class="text-zinc-300">Viewer</span> access. Promote them to Engineer or Admin above.</p>
-          <div class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-mono">
-            ${[['Viewer','Read all data, view reports','border-zinc-700 text-zinc-400'],['Engineer','+ Add readings, log replacements','border-sky-700 text-sky-400'],['Admin','+ Close months, manage users, unlock records','border-amber-700 text-amber-400']].map(([r,d,c])=>html`<div key=${r} class=${'border rounded p-3 '+c}><div class="font-bold mb-1">${r}</div><div class="text-zinc-600 text-[10px]">${d}</div></div>`)}
-          </div>
-        </div>
-      </div>`;
-    }
-
-    // ─── MOUNT ───────────────────────────────────────────
-    createRoot(document.getElementById('root')).render(html`<${App}/>`);
-
-    if('serviceWorker' in navigator){
-      window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
-    }
-  </script>
+// ════════════════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════════════════
+if(!CONFIGURED){
+  S.view='setup'; render();
+} else {
+  DB.auth.getSession().then(function(r){
+    var sess=r.data&&r.data.session;
+    S.session=sess;
+    S.view=sess?'app':'login';
+    if(sess){
+      loadProfile(sess.user.id).then(function(){ loadData(); });
+    } else { render(); }
+  });
+  DB.auth.onAuthStateChange(function(_,sess){
+    S.session=sess;
+    if(sess){
+      S.view='app';
+      loadProfile(sess.user.id).then(function(){ loadData(); });
+    } else { S.view='login'; render(); }
+  });
+}
+</script>
 </body>
 </html>

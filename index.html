@@ -184,7 +184,6 @@ var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSI
 // ═══════════════════════════════════════════════════════════
 
 var CONFIGURED = SUPABASE_URL.indexOf('YOUR_') === -1;
-try{ var _jt=localStorage.getItem('ht_jump_thr'); if(_jt&&+_jt>0) { /* will set after S init */ } }catch(e){}
 var DB = CONFIGURED ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
 // ── MONTHS ───────────────────────────────────────────────────
@@ -226,7 +225,6 @@ var S = {
   editingAssetId: null,
   editFields: {}
 };
-try{ var _jts=localStorage.getItem('ht_jump_thr'); if(_jts&&+_jts>0) S.jumpThreshold=+_jts; }catch(e){}
 
 // ── UTILS ────────────────────────────────────────────────────
 function pad2(n){ return n<10?'0'+n:String(n); }
@@ -938,12 +936,18 @@ async function loadData(){
     DB.from('replacement_logs').select('*').order('replacement_date'),
     DB.from('audit_log').select('*').order('timestamp',{ascending:false}).limit(500),
     DB.from('closed_months').select('month'),
+    DB.from('app_settings').select('*'),
   ]);
   S.assets=results[0].data||[];
   S.readings=results[1].data||[];
   S.repls=results[2].data||[];
   S.audit=results[3].data||[];
   S.closed=(results[4].data||[]).map(function(x){ return x.month; });
+  // Load settings — each row is {key, value}
+  var settings=results[5].data||[];
+  settings.forEach(function(row){
+    if(row.key==='jump_threshold'&&+row.value>0) S.jumpThreshold=+row.value;
+  });
   render();
 }
 
@@ -1214,11 +1218,14 @@ function autoFillMeterMax(loc){
   else if(t==='LV'){ maxEl.value=10000; if(lblEl) lblEl.textContent='Meter Max Value — LV motor (10,000 auto)'; }
   else { maxEl.value=9999; if(lblEl) lblEl.textContent='Meter Max Value'; }
 }
-function aiUpdateThreshold(val){
+async function aiUpdateThreshold(val){
   var n=+val;
   if(isNaN(n)||n<1) return;
   S.jumpThreshold=n;
-  try{ localStorage.setItem('ht_jump_thr',String(n)); }catch(e){}
+  // Persist to Supabase so ALL users and ALL browsers see the same value
+  var r=await DB.from('app_settings').upsert({key:'jump_threshold',value:String(n)},{onConflict:'key'});
+  if(r.error){ toast('Could not save threshold to database: '+r.error.message,'err'); }
+  else { toast('Jump threshold updated to '+n+' hrs for all users. ✓','ok'); render(); }
 }
 
 function aiQuickSend(text){
@@ -1292,27 +1299,27 @@ async function sendAI(){
   });
   apiMsgs.push({role:'user',content:text});
 
+  // Build full conversation as a single prompt for Pollinations GET API
+  // Include recent history for context (last 4 exchanges)
+  var historyCtx='';
+  var histSlice=S.aiMessages.slice(0,-1).slice(-8);
+  if(histSlice.length){
+    historyCtx='\n\n== CONVERSATION HISTORY ==\n'+
+      histSlice.map(function(m){ return (m.role==='user'?'User: ':'Assistant: ')+m.text; }).join('\n');
+  }
+  var fullPrompt=historyCtx+'\n\nUser: '+text;
+
   try {
-    var resp=await fetch('https://text.pollinations.ai/openai',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        model:'openai-large',
-        messages:[{role:'system',content:systemPrompt}].concat(apiMsgs),
-        private:true,
-        seed:Math.floor(Math.random()*9999)
-      })
-    });
+    var _url='https://text.pollinations.ai/'+
+      encodeURIComponent(fullPrompt)+
+      '?model=openai-large'+
+      '&system='+encodeURIComponent(systemPrompt)+
+      '&seed='+Math.floor(Math.random()*99999)+
+      '&private=true';
+    var resp=await fetch(_url);
     if(!resp.ok){ throw new Error('AI service error: '+resp.status+' '+resp.statusText); }
-    var data=await resp.json();
-    var rawText='';
-    if(data.choices&&data.choices[0]&&data.choices[0].message){
-      rawText=data.choices[0].message.content||'';
-    } else if(typeof data==='string'){
-      rawText=data;
-    } else {
-      throw new Error('Unexpected response format from AI service.');
-    }
+    var rawText=await resp.text();
+    if(!rawText||!rawText.trim()){ throw new Error('Empty response from AI service — try again.'); }
 
     // Parse and execute commands
     var cmds=[];

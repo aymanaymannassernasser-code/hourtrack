@@ -184,6 +184,7 @@ var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSI
 // ═══════════════════════════════════════════════════════════
 
 var CONFIGURED = SUPABASE_URL.indexOf('YOUR_') === -1;
+try{ var _jt=localStorage.getItem('ht_jump_thr'); if(_jt&&+_jt>0) { /* will set after S init */ } }catch(e){}
 var DB = CONFIGURED ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
 // ── MONTHS ───────────────────────────────────────────────────
@@ -221,21 +222,38 @@ var S = {
   aiMessages: [],
   aiInput: '',
   aiLoading: false,
+  jumpThreshold: 800,
   editingAssetId: null,
   editFields: {}
 };
+try{ var _jts=localStorage.getItem('ht_jump_thr'); if(_jts&&+_jts>0) S.jumpThreshold=+_jts; }catch(e){}
 
 // ── UTILS ────────────────────────────────────────────────────
 function pad2(n){ return n<10?'0'+n:String(n); }
 function fmtMonth(m){ return new Date(m+'T12:00:00Z').toLocaleDateString('en-US',{month:'short',year:'numeric'}); }
-function calcAcc(a,raw){ return a.reset_count*a.meter_max_value+a.stuck_reading+(raw||0); }
+function getMotorType(loc){
+  if(!loc) return 'unknown';
+  var u=loc.toUpperCase();
+  if(u.indexOf('CB')>=0) return 'MV';
+  if(u.indexOf('CC')>=0) return 'LV';
+  return 'unknown';
+}
+function getMeterMax(a){
+  var t=getMotorType(a.location||'');
+  if(t==='MV') return 65535;
+  if(t==='LV') return 10000;
+  return a.meter_max_value||9999;
+}
+function calcAcc(a,raw){
+  return a.reset_count*getMeterMax(a)+a.stuck_reading+(raw||0);
+}
 function uid(){ return Date.now()+'-'+Math.random().toString(36).slice(2,6); }
 function esc(s){
   if(s===null||s===undefined) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 function badge(v){
-  var m={OK:'b-ok',WARNING:'b-warn',CRITICAL:'b-crit',RESET:'b-reset'};
+  var m={OK:'b-ok',WARNING:'b-warn',CRITICAL:'b-crit',RESET:'b-reset',ROLLOVER:'b-reset'};
   return '<span class="badge '+(m[v]||'b-ok')+'">'+esc(v)+'</span>';
 }
 function roleBadge(r){
@@ -245,18 +263,25 @@ function roleBadge(r){
 function fmtNum(n){ return typeof n==='number'?n.toLocaleString():String(n||'—'); }
 function validateReading(asset, readings, val, month){
   if(val<0) return {status:'CRITICAL',message:'Negative reading not allowed.'};
+  var meterMax=getMeterMax(asset);
+  var jt=(asset.threshold_hours&&asset.threshold_hours!==200)?asset.threshold_hours:(S.jumpThreshold||800);
   var prev=null, best='';
   for(var i=0;i<readings.length;i++){
     var r=readings[i];
-    if(r.asset_id===asset.id && r.month<month && r.month>best){
-      best=r.month; prev=r;
-    }
+    if(r.asset_id===asset.id && r.month<month && r.month>best){ best=r.month; prev=r; }
   }
   if(!prev) return {status:'OK',message:'First reading for this asset.'};
   var diff=val-prev.raw_meter_reading;
-  if(diff<0) return {status:'CRITICAL',message:'Decreased by '+Math.abs(diff)+' hrs — record a reset?'};
-  if(diff>asset.threshold_hours*1.5) return {status:'CRITICAL',message:'+'+diff+' hrs exceeds critical limit.'};
-  if(diff>asset.threshold_hours) return {status:'WARNING',message:'+'+diff+' hrs exceeds '+asset.threshold_hours+' hr threshold.'};
+  if(diff<0){
+    // Check if this is a natural counter rollover
+    var wrapped=meterMax-prev.raw_meter_reading+val;
+    if(wrapped>=0&&wrapped<=jt*2){
+      return {status:'RESET',message:'Counter rollover at '+meterMax+' hrs. Wrapped Δ: +'+wrapped+' hrs. Log in Replacements tab to increment reset count.'};
+    }
+    return {status:'CRITICAL',message:'Reading dropped by '+Math.abs(diff)+' hrs — data error or missed rollover?'};
+  }
+  if(diff>jt*1.5) return {status:'CRITICAL',message:'+'+diff+' hrs — abnormal jump! Normal max: '+jt+' hrs/mo.'};
+  if(diff>jt) return {status:'WARNING',message:'+'+diff+' hrs exceeds normal jump of '+jt+' hrs/mo.'};
   return {status:'OK',message:'+'+diff+' hrs this month.'};
 }
 function exportCSV(data, filename){
@@ -434,9 +459,9 @@ function renderDashboard(){
       var acc=calcAcc(a,lat?lat.raw_meter_reading:0);
       var delta=(lat&&prv)?(lat.raw_meter_reading-prv.raw_meter_reading):null;
       var v=lat?lat.validation:'OK';
-      var pct=Math.min(100,(acc/(a.meter_max_value*5))*100);
+      var pct=Math.min(100,(acc/(getMeterMax(a)*5))*100);
       var barC=pct>85?'bar-r':pct>60?'bar-a':'bar-g';
-      var dc=delta!==null&&delta>a.threshold_hours?'amber':'green';
+      var dc=delta!==null&&delta>(S.jumpThreshold||800)?'amber':'green';
       tableRows+='<tr class="tr-click" onclick="openAssetDetail(\''+esc(a.id)+'\')">'+
         '<td><div class="bold xs" style="color:#e4e4e7">'+esc(a.name)+'</div><div class="xs dim">'+esc(a.id)+'</div></td>'+
         '<td class="xs dim">'+esc(a.location)+'</td>'+
@@ -507,9 +532,9 @@ function renderAssets(){
       '<div class="xs amber bold" style="text-transform:uppercase;letter-spacing:.15em;margin-bottom:.8rem">Register New Asset</div>'+
       '<div class="grid2">'+
       '<div class="fg"><label class="lbl">Tag Name *</label><input id="na-name" class="inp" placeholder="Motor tag no." value=""></div>'+
-      '<div class="fg"><label class="lbl">Location / Drawer</label><input id="na-loc" class="inp" placeholder="Panel 185CC12A +03.17" value=""></div>'+
-      '<div class="fg"><label class="lbl">Meter Max Value</label><input id="na-max" class="inp" type="number" value="9999"></div>'+
-      '<div class="fg"><label class="lbl">Monthly Threshold (hrs)</label><input id="na-thr" class="inp" type="number" value="200"></div>'+
+      '<div class="fg"><label class="lbl">Location / Drawer</label><input id="na-loc" class="inp" placeholder="Panel 185CC12A +03.17" value="" oninput="autoFillMeterMax(this.value)"></div>'+
+      '<div class="fg"><label class="lbl" id="na-max-lbl">Meter Max Value</label><input id="na-max" class="inp" type="number" value="9999"></div>'+
+      '<div class="fg"><label class="lbl">Monthly Jump Threshold (hrs) — leave blank for global default ('+((S.jumpThreshold)||800)+')</label><input id="na-thr" class="inp" type="number" value=""></div>'+
       '</div>'+
       '<div class="flex"><button class="btn btn-p" onclick="submitAddAsset()" '+(S.addAssetBusy?'disabled':'')+'>'+
       (S.addAssetBusy?'Saving…':'Register Asset')+'</button>'+
@@ -523,9 +548,9 @@ function renderAssets(){
         '<td class="amber xs">'+esc(a.id)+'</td>'+
         '<td><span class="bold xs" style="color:#e4e4e7">'+esc(a.name)+'</span></td>'+
         '<td class="xs dim">'+esc(a.location)+'</td>'+
-        '<td>'+a.meter_max_value.toLocaleString()+'</td>'+
+        '<td><span class="xs '+(getMotorType(a.location)==='MV'?'sky':'green')+'">'+(getMotorType(a.location)==='MV'?'MV':'LV')+' '+getMeterMax(a).toLocaleString()+'</span></td>'+
         '<td>'+a.reset_count+'</td>'+
-        '<td>'+a.threshold_hours+' hrs/mo</td>'+
+        '<td>'+(S.jumpThreshold||800)+' hrs/mo</td>'+
         '<td class="dim xs">→</td></tr>';
     }).join('');
   return '<div class="row">'+
@@ -552,9 +577,9 @@ function renderAssetList(){
         '<td class="amber xs">'+esc(a.id)+'</td>'+
         '<td><span class="bold xs" style="color:#e4e4e7">'+esc(a.name)+'</span></td>'+
         '<td class="xs dim">'+esc(a.location)+'</td>'+
-        '<td>'+a.meter_max_value.toLocaleString()+'</td>'+
+        '<td><span class="xs '+(getMotorType(a.location)==='MV'?'sky':'green')+'">'+(getMotorType(a.location)==='MV'?'MV':'LV')+' '+getMeterMax(a).toLocaleString()+'</span></td>'+
         '<td>'+a.reset_count+'</td>'+
-        '<td>'+a.threshold_hours+' hrs/mo</td>'+
+        '<td>'+(S.jumpThreshold||800)+' hrs/mo</td>'+
         '<td class="dim xs">→</td></tr>';
     }).join('');
   // Update count
@@ -570,10 +595,12 @@ function renderAssetDetail(){
   var acc=calcAcc(a,lat?lat.raw_meter_reading:0);
   var assetRepls=S.repls.filter(function(r){ return r.asset_id===a.id; });
 
+  var _mtype=getMotorType(a.location);
+  var _mmax=getMeterMax(a);
   var statCards=[
     {l:'Accumulated Runtime',v:acc.toLocaleString()+' hrs',c:'amber'},
+    {l:'Motor Type',v:(_mtype==='MV'?'MV — '+_mmax.toLocaleString()+' hr counter':_mtype==='LV'?'LV — '+_mmax.toLocaleString()+' hr counter':'Unknown — '+_mmax.toLocaleString()),c:_mtype==='MV'?'sky':'green'},
     {l:'Reset Count',v:a.reset_count,c:'sky'},
-    {l:'Stuck Reading',v:a.stuck_reading.toLocaleString()+' hrs',c:'t2'},
     {l:'Latest Raw',v:lat?lat.raw_meter_reading.toLocaleString()+' hrs':'—',c:'t2'},
   ];
 
@@ -584,7 +611,7 @@ function renderAssetDetail(){
   var rows=ar.map(function(r,i){
     var prev=ar[i-1];
     var delta=prev?r.raw_meter_reading-prev.raw_meter_reading:null;
-    var dc=delta===null?'dim':delta<0?'red':delta>a.threshold_hours?'amber':'green';
+    var dc=delta===null?'dim':delta<0?'red':delta>(S.jumpThreshold||800)?'amber':'green';
     return '<tr>'+
       '<td>'+fmtMonth(r.month)+'</td>'+
       '<td>'+r.raw_meter_reading.toLocaleString()+' hrs</td>'+
@@ -605,8 +632,8 @@ function renderAssetDetail(){
       '<div class="edit-grid">'+
       '<div class="fg"><label class="lbl">Tag Name</label><input id="ef-name" class="inp" value="'+esc(ef.name||a.name)+'"></div>'+
       '<div class="fg"><label class="lbl">Location / Drawer</label><input id="ef-loc" class="inp" value="'+esc(ef.location||a.location||'')+'"></div>'+
-      '<div class="fg"><label class="lbl">Meter Max Value</label><input id="ef-max" class="inp" type="number" value="'+(ef.meter_max_value!==undefined?ef.meter_max_value:a.meter_max_value)+'"></div>'+
-      '<div class="fg"><label class="lbl">Monthly Threshold (hrs)</label><input id="ef-thr" class="inp" type="number" value="'+(ef.threshold_hours!==undefined?ef.threshold_hours:a.threshold_hours)+'"></div>'+
+      '<div class="fg"><label class="lbl">Meter Max Value (auto: '+(getMotorType(a.location)==='MV'?'65535 MV':getMotorType(a.location)==='LV'?'10000 LV':'from location')+')</label><input id="ef-max" class="inp" type="number" value="'+(ef.meter_max_value!==undefined?ef.meter_max_value:a.meter_max_value)+'"></div>'+
+      '<div class="fg"><label class="lbl">Monthly Jump Threshold (0 = use global '+(S.jumpThreshold||800)+' hrs)</label><input id="ef-thr" class="inp" type="number" value="'+(ef.threshold_hours!==undefined?ef.threshold_hours:a.threshold_hours)+'"></div>'+
       '<div class="fg"><label class="lbl">Stuck Reading (accumulated override)</label><input id="ef-stuck" class="inp" type="number" value="'+(ef.stuck_reading!==undefined?ef.stuck_reading:a.stuck_reading)+'"></div>'+
       '<div class="fg"><label class="lbl">Reset Count</label><input id="ef-reset" class="inp" type="number" value="'+(ef.reset_count!==undefined?ef.reset_count:a.reset_count)+'"></div>'+
       '</div>'+
@@ -629,7 +656,7 @@ function renderAssetDetail(){
     '<div class="grid4">'+statCards.map(function(c){ return '<div class="card"><div class="xs dim" style="text-transform:uppercase;letter-spacing:.12em;margin-bottom:.3rem">'+c.l+'</div><div class="bold" style="font-size:1.3rem;color:var(--'+c.c+')">'+esc(String(c.v))+'</div></div>'; }).join('')+'</div>'+
     '<div class="card card-amber"><div class="xs amber bold" style="text-transform:uppercase;letter-spacing:.15em;margin-bottom:.5rem">Runtime Formula</div>'+
     '<div class="formula"><span class="sky bold">'+a.reset_count+'</span><span class="dim"> × </span>'+
-    '<span>'+a.meter_max_value.toLocaleString()+'</span><span class="dim"> + </span>'+
+    '<span>'+getMeterMax(a).toLocaleString()+'</span><span class="dim"> + </span>'+
     '<span>'+a.stuck_reading.toLocaleString()+'</span><span class="dim"> + </span>'+
     '<span>'+(lat?lat.raw_meter_reading:0)+'</span><span class="dim"> = </span>'+
     '<span class="amber bold">'+acc.toLocaleString()+' hrs</span></div></div>'+
@@ -776,7 +803,8 @@ function renderReports(){
     var prev=null,best='';
     S.readings.forEach(function(rd){ if(rd.asset_id===a.id&&rd.month<selM&&rd.month>best){ best=rd.month;prev=rd; } });
     var delta=(r&&prev)?(r.raw_meter_reading-prev.raw_meter_reading):null;
-    return {id:a.id,name:a.name,location:a.location,raw:r?r.raw_meter_reading:null,delta:delta,acc:calcAcc(a,r?r.raw_meter_reading:0),thr:a.threshold_hours,status:r?r.validation:'N/A'};
+    var _thr=(a.threshold_hours&&a.threshold_hours>0)?a.threshold_hours:(S.jumpThreshold||800);
+    return {id:a.id,name:a.name,location:a.location,raw:r?r.raw_meter_reading:null,delta:delta,acc:calcAcc(a,r?r.raw_meter_reading:0),thr:_thr,status:r?r.validation:'N/A'};
   });
   var trendData=MONTHS.map(function(m){
     var e={label:fmtMonth(m)};
@@ -936,7 +964,11 @@ async function submitAddAsset(){
   if(!nameEl||!nameEl.value.trim()){ toast('Name required.','err'); return; }
   S.addAssetBusy=true; render();
   var id='A'+String(S.assets.length+1).padStart(3,'0');
-  var rec={id:id,name:nameEl.value.trim(),location:locEl?locEl.value:'',meter_max_value:+(maxEl?maxEl.value:9999),reset_count:0,stuck_reading:0,created_at:new Date().toISOString().slice(0,10),active_status:true,threshold_hours:+(thrEl?thrEl.value:200)};
+  var _loc=locEl?locEl.value:'';
+  var _autoMax=getMotorType(_loc)==='MV'?65535:getMotorType(_loc)==='LV'?10000:9999;
+  var _maxVal=maxEl&&maxEl.value?+maxEl.value:_autoMax;
+  var _thrVal=thrEl&&thrEl.value?+thrEl.value:0; // 0 means use global jumpThreshold
+  var rec={id:id,name:nameEl.value.trim(),location:_loc,meter_max_value:_maxVal,reset_count:0,stuck_reading:0,created_at:new Date().toISOString().slice(0,10),active_status:true,threshold_hours:_thrVal};
   var r=await DB.from('assets').insert(rec);
   if(r.error){ toast(r.error.message,'err'); S.addAssetBusy=false; render(); return; }
   S.assets.push(rec);
@@ -1150,8 +1182,18 @@ function renderAI(){
         cmdHTML+'</div>';
     }).join('');
 
+  var settingsBar='<div class="card" style="margin-bottom:.6rem;border-color:rgba(202,138,4,.3)">'+
+    '<div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap">'+
+    '<div class="xs bold amber" style="text-transform:uppercase;letter-spacing:.12em;white-space:nowrap">⚙ Global Settings</div>'+
+    '<div style="display:flex;align-items:center;gap:.4rem">'+
+    '<label class="lbl" style="margin:0;white-space:nowrap">Normal Jump Threshold (hrs/month):</label>'+
+    '<input id="jt-inp" class="inp" type="number" min="1" style="width:6rem" value="'+(S.jumpThreshold||800)+'" oninput="aiUpdateThreshold(this.value)">'+
+    '<span class="xs dim">LV motors max 10,000 hrs · MV motors max 65,535 hrs (auto-detected from CC/CB in drawer location)</span>'+
+    '</div></div></div>';
+
   return '<div class="row"><div class="ptitle">AI Admin <span class="role-tag rt-admin xs" style="vertical-align:middle">ADMIN ONLY</span></div>'+
     '<button class="btn btn-s" style="font-size:.7rem" onclick="S.aiMessages=[];render()">Clear Chat</button></div>'+
+    settingsBar+
     '<div class="card" style="margin-bottom:.6rem"><div class="xs dim" style="margin-bottom:.4rem">Quick prompts:</div>'+hintsHTML+'</div>'+
     '<div class="card ai-wrap">'+
     '<div class="ai-messages" id="ai-msgs">'+msgsHTML+
@@ -1161,6 +1203,22 @@ function renderAI(){
     '<textarea id="ai-inp" class="ai-inp" placeholder="Ask me anything or give me a command…" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();sendAI()}">'+(S.aiInput?esc(S.aiInput):'')+'</textarea>'+
     '<button class="ai-send" onclick="sendAI()" '+(S.aiLoading?'disabled':'')+'>Send</button>'+
     '</div></div>';
+}
+
+function autoFillMeterMax(loc){
+  var t=getMotorType(loc);
+  var maxEl=document.getElementById('na-max');
+  var lblEl=document.getElementById('na-max-lbl');
+  if(!maxEl) return;
+  if(t==='MV'){ maxEl.value=65535; if(lblEl) lblEl.textContent='Meter Max Value — MV motor (65,535 auto)'; }
+  else if(t==='LV'){ maxEl.value=10000; if(lblEl) lblEl.textContent='Meter Max Value — LV motor (10,000 auto)'; }
+  else { maxEl.value=9999; if(lblEl) lblEl.textContent='Meter Max Value'; }
+}
+function aiUpdateThreshold(val){
+  var n=+val;
+  if(isNaN(n)||n<1) return;
+  S.jumpThreshold=n;
+  try{ localStorage.setItem('ht_jump_thr',String(n)); }catch(e){}
 }
 
 function aiQuickSend(text){
@@ -1196,7 +1254,7 @@ async function sendAI(){
   var systemPrompt='You are HourTrack AI Admin — a powerful industrial motor runtime management assistant with FULL ADMIN ACCESS to the HourTrack database.\n\n'+
     'You help the admin manage assets (motors), correct data, analyze runtime trends, and execute database operations.\n\n'+
     '== LIVE DATABASE SNAPSHOT ==\n'+
-    'Current month: '+fmtMonth(CUR_MONTH)+'\n'+
+    'Current month: '+fmtMonth(CUR_MONTH)+'\n'+'Global jump threshold: '+(S.jumpThreshold||800)+' hrs/month\n'+'Motor types: MV (CB in drawer) = 65535 hr counter, LV (CC in drawer) = 10000 hr counter\n'+
     'Previous month: '+fmtMonth(PREV_MONTH)+'\n'+
     'Total assets: '+S.assets.length+' ('+S.assets.filter(function(a){return a.active_status;}).length+' active)\n'+
     'Closed months: '+closedCtx.map(fmtMonth).join(', ')+'\n'+
@@ -1211,7 +1269,7 @@ async function sendAI(){
     'Delete a reading:\n'+
     '<cmd>{"action":"deleteReading","asset_id":"A001","month":"2025-01-01"}</cmd>\n\n'+
     'Add a new asset:\n'+
-    '<cmd>{"action":"addAsset","id":"A200","name":"Motor Tag","location":"Panel B","meter_max_value":9999,"threshold_hours":200}</cmd>\n\n'+
+    '<cmd>{"action":"addAsset","id":"A200","name":"Motor Tag","location":"185CB12A","meter_max_value":65535,"threshold_hours":0}</cmd>\n'+'// threshold_hours:0 means use global jump threshold. meter_max auto-detected from CB=65535/CC=10000\n\n'+
     'Deactivate/activate asset:\n'+
     '<cmd>{"action":"editAsset","id":"A001","fields":{"active_status":false}}</cmd>\n\n'+
     'Close a month:\n'+
@@ -1235,19 +1293,26 @@ async function sendAI(){
   apiMsgs.push({role:'user',content:text});
 
   try {
-    var resp=await fetch('https://api.anthropic.com/v1/messages',{
+    var resp=await fetch('https://text.pollinations.ai/openai',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
-        model:'claude-sonnet-4-20250514',
-        max_tokens:1500,
-        system:systemPrompt,
-        messages:apiMsgs
+        model:'openai-large',
+        messages:[{role:'system',content:systemPrompt}].concat(apiMsgs),
+        private:true,
+        seed:Math.floor(Math.random()*9999)
       })
     });
+    if(!resp.ok){ throw new Error('AI service error: '+resp.status+' '+resp.statusText); }
     var data=await resp.json();
-    if(data.error){ throw new Error(data.error.message||'API error'); }
-    var rawText=(data.content||[]).map(function(b){ return b.type==='text'?b.text:''; }).join('');
+    var rawText='';
+    if(data.choices&&data.choices[0]&&data.choices[0].message){
+      rawText=data.choices[0].message.content||'';
+    } else if(typeof data==='string'){
+      rawText=data;
+    } else {
+      throw new Error('Unexpected response format from AI service.');
+    }
 
     // Parse and execute commands
     var cmds=[];
@@ -1295,7 +1360,7 @@ async function executeAICommand(cmd){
     if(cmd.action==='upsertReading'){
       if(!cmd.asset_id||!cmd.month||cmd.raw_meter_reading===undefined) return {ok:false,err:'Missing fields',detail:''};
       a=S.assets.find(function(x){ return x.id===cmd.asset_id; });
-      var v=validateReading(a||{id:cmd.asset_id,threshold_hours:200,meter_max_value:9999},S.readings,cmd.raw_meter_reading,cmd.month);
+      var v=validateReading(a||{id:cmd.asset_id,threshold_hours:0,meter_max_value:9999,location:''},S.readings,cmd.raw_meter_reading,cmd.month);
       var rec={id:uid(),asset_id:cmd.asset_id,month:cmd.month,raw_meter_reading:cmd.raw_meter_reading,locked:false,created_at:new Date().toISOString(),created_by:S.session.user.email+' (AI)',validation:v.status};
       var r2=await DB.from('monthly_readings').upsert(rec,{onConflict:'asset_id,month'});
       if(r2.error) return {ok:false,err:r2.error.message,detail:cmd.asset_id};
@@ -1314,7 +1379,9 @@ async function executeAICommand(cmd){
     }
     if(cmd.action==='addAsset'){
       if(!cmd.id||!cmd.name) return {ok:false,err:'Missing id or name',detail:''};
-      var rec2={id:cmd.id,name:cmd.name,location:cmd.location||'',meter_max_value:cmd.meter_max_value||9999,reset_count:0,stuck_reading:0,created_at:new Date().toISOString().slice(0,10),active_status:true,threshold_hours:cmd.threshold_hours||200};
+      var _aloc=cmd.location||'';
+      var _amax=cmd.meter_max_value||(getMotorType(_aloc)==='MV'?65535:getMotorType(_aloc)==='LV'?10000:9999);
+      var rec2={id:cmd.id,name:cmd.name,location:_aloc,meter_max_value:_amax,reset_count:0,stuck_reading:0,created_at:new Date().toISOString().slice(0,10),active_status:true,threshold_hours:cmd.threshold_hours||0};
       var r4=await DB.from('assets').insert(rec2);
       if(r4.error) return {ok:false,err:r4.error.message,detail:cmd.id};
       S.assets.push(rec2);

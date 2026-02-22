@@ -132,6 +132,35 @@
     /* SPIN */
     .spin{display:inline-block;animation:spin 1s linear infinite}
     @keyframes spin{to{transform:rotate(360deg)}}
+    /* AI PANEL */
+    .ai-wrap{display:flex;flex-direction:column;height:calc(100vh - 8rem);max-height:800px}
+    .ai-messages{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:.6rem;padding:.5rem 0;min-height:0}
+    .ai-msg{display:flex;flex-direction:column;gap:.25rem;animation:fadeUp .2s ease}
+    @keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+    .ai-msg-user{align-items:flex-end}
+    .ai-msg-ai{align-items:flex-start}
+    .ai-bubble{max-width:82%;padding:.6rem .85rem;border-radius:.5rem;font-size:.8rem;line-height:1.6;white-space:pre-wrap;word-break:break-word}
+    .ai-bubble-user{background:var(--amber);color:#1a0a00;font-weight:600;border-radius:.5rem .5rem .1rem .5rem}
+    .ai-bubble-ai{background:var(--bg2);border:1px solid var(--bg3);color:var(--t1);border-radius:.5rem .5rem .5rem .1rem}
+    .ai-cmd-block{margin-top:.4rem;max-width:82%;border:1px solid rgba(202,138,4,.35);background:rgba(120,53,15,.12);border-radius:.375rem;padding:.5rem .8rem;font-size:.72rem;font-family:'Courier New',monospace}
+    .ai-cmd-row{display:flex;align-items:center;gap:.4rem;margin-bottom:.2rem}
+    .ai-cmd-action{color:var(--amber);font-weight:700;text-transform:uppercase;font-size:.65rem;letter-spacing:.1em}
+    .ai-cmd-detail{color:var(--t3);font-size:.68rem}
+    .ai-cmd-ok{color:#6ee7b7}
+    .ai-cmd-err{color:#f87171}
+    .ai-input-row{display:flex;gap:.5rem;padding-top:.6rem;border-top:1px solid var(--bg3);flex-shrink:0}
+    .ai-inp{flex:1;background:var(--bg);border:1px solid var(--bdr);color:var(--t1);border-radius:.375rem;padding:.55rem .8rem;font-size:.82rem;font-family:'Courier New',monospace;outline:none;resize:none;height:2.6rem;transition:border-color .15s}
+    .ai-inp:focus{border-color:var(--amber)}
+    .ai-send{background:var(--amber);color:var(--bg);border:none;border-radius:.375rem;padding:.5rem 1rem;font-size:.8rem;font-family:inherit;font-weight:700;cursor:pointer;transition:background .15s;flex-shrink:0}
+    .ai-send:hover{background:var(--amber2)}
+    .ai-send:disabled{opacity:.5;cursor:not-allowed}
+    .ai-chip{display:inline-flex;align-items:center;gap:.3rem;background:rgba(202,138,4,.15);border:1px solid rgba(202,138,4,.3);border-radius:.25rem;padding:.1rem .4rem;font-size:.6rem;font-family:'Courier New',monospace;color:var(--amber);margin:.1rem}
+    .ai-hint-btn{display:inline-block;background:var(--bg3);border:1px solid var(--bdr);border-radius:.25rem;padding:.25rem .55rem;font-size:.68rem;font-family:inherit;color:var(--t2);cursor:pointer;margin:.15rem;transition:background .15s}
+    .ai-hint-btn:hover{background:var(--bdr);color:var(--t1)}
+    /* EDIT ASSET FORM */
+    .edit-form{background:var(--bg2);border:1px solid rgba(202,138,4,.35);border-radius:.5rem;padding:1rem;margin-bottom:1rem}
+    .edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:.6rem}
+    @media(max-width:600px){.edit-grid{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
@@ -150,8 +179,8 @@ window.onerror = function(msg,src,line){
 };
 
 // ══ CONFIG — REPLACE THESE TWO VALUES ══════════════════════
-var SUPABASE_URL = 'https://omtkabzcxudyiionloju.supabase.co'; 
-var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9tdGthYnpjeHVkeWlpb25sb2p1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2OTIyOTYsImV4cCI6MjA4NzI2ODI5Nn0.iE3r_O-qhzeQHj7FvSy76DEB4EJVfgrxmDHjYzsSHbk';
+var SUPABASE_URL = 'YOUR_SUPABASE_URL_HERE';
+var SUPABASE_KEY = 'YOUR_SUPABASE_ANON_KEY_HERE';
 // ═══════════════════════════════════════════════════════════
 
 var CONFIGURED = SUPABASE_URL.indexOf('YOUR_') === -1;
@@ -189,6 +218,11 @@ var S = {
   loginEmail: '', loginPw: '', loginErr: '', loginMsg: '', loginBusy: false,
   addAssetOpen: false,
   addAssetBusy: false,
+  aiMessages: [],
+  aiInput: '',
+  aiLoading: false,
+  editingAssetId: null,
+  editFields: {}
 };
 
 // ── UTILS ────────────────────────────────────────────────────
@@ -337,10 +371,11 @@ function renderLogin(){
 function renderApp(){
   var tabs=['dashboard','assets','entry','replacements','reports','audit'];
   if(S.userRole==='admin') tabs.push('users');
+  if(S.userRole==='admin') tabs.push('ai');
+  var _navL={dashboard:'Dashboard',assets:'Assets',entry:'Monthly Entry',replacements:'Replacements',reports:'Reports',audit:'Audit Log',users:'Users',ai:'⚡ AI Admin'};
   var navHTML=tabs.map(function(t){
-    return '<button class="nav-btn'+(S.appTab===t?' active':'')+'" onclick="goTab(\''+t+'\')">'+
-      ({dashboard:'Dashboard',assets:'Assets',entry:'Monthly Entry',replacements:'Replacements',reports:'Reports',audit:'Audit Log',users:'Users'}[t]||t)+
-      '</button>';
+    var sty=t==='ai'?' style="color:var(--amber)"':'';
+    return '<button class="nav-btn'+(S.appTab===t?' active':'')+'"'+sty+' onclick="goTab(\''+t+'\')">'+(_navL[t]||t)+'</button>';
   }).join('');
   var rc=S.userRole==='admin'?'rt-admin':S.userRole==='engineer'?'rt-engineer':'rt-viewer';
   return '<div id="header">'+
@@ -367,6 +402,7 @@ function renderTab(){
   if(t==='reports') return renderReports();
   if(t==='audit') return renderAudit();
   if(t==='users') return renderUsers();
+  if(t==='ai') return renderAI();
   return '';
 }
 
@@ -560,9 +596,36 @@ function renderAssetDetail(){
       '</tr>';
   }).join('');
 
+  // Inline edit form
+  var editFormHTML='';
+  if(S.editingAssetId===a.id){
+    var ef=S.editFields;
+    editFormHTML='<div class="edit-form">'+
+      '<div class="xs amber bold" style="text-transform:uppercase;letter-spacing:.15em;margin-bottom:.75rem">✎ Edit Asset — '+esc(a.id)+'</div>'+
+      '<div class="edit-grid">'+
+      '<div class="fg"><label class="lbl">Tag Name</label><input id="ef-name" class="inp" value="'+esc(ef.name||a.name)+'"></div>'+
+      '<div class="fg"><label class="lbl">Location / Drawer</label><input id="ef-loc" class="inp" value="'+esc(ef.location||a.location||'')+'"></div>'+
+      '<div class="fg"><label class="lbl">Meter Max Value</label><input id="ef-max" class="inp" type="number" value="'+(ef.meter_max_value!==undefined?ef.meter_max_value:a.meter_max_value)+'"></div>'+
+      '<div class="fg"><label class="lbl">Monthly Threshold (hrs)</label><input id="ef-thr" class="inp" type="number" value="'+(ef.threshold_hours!==undefined?ef.threshold_hours:a.threshold_hours)+'"></div>'+
+      '<div class="fg"><label class="lbl">Stuck Reading (accumulated override)</label><input id="ef-stuck" class="inp" type="number" value="'+(ef.stuck_reading!==undefined?ef.stuck_reading:a.stuck_reading)+'"></div>'+
+      '<div class="fg"><label class="lbl">Reset Count</label><input id="ef-reset" class="inp" type="number" value="'+(ef.reset_count!==undefined?ef.reset_count:a.reset_count)+'"></div>'+
+      '</div>'+
+      '<div class="fg"><label class="lbl">Active Status</label>'+
+      '<select id="ef-active" class="sel">'+
+      '<option value="true"'+(a.active_status?' selected':'')+'>Active</option>'+
+      '<option value="false"'+(!a.active_status?' selected':'')+'>Inactive / Retired</option>'+
+      '</select></div>'+
+      '<div class="flex" style="margin-top:.5rem">'+
+      '<button class="btn btn-p" onclick="saveAssetEdits(\''+esc(a.id)+'\')" >Save Changes</button>'+
+      '<button class="btn btn-s" onclick="S.editingAssetId=null;S.editFields={};render()">Cancel</button>'+
+      '</div></div>';
+  }
+
   return '<div class="flex" style="margin-bottom:.8rem">'+
-    '<button class="btn btn-s xs" onclick="S.detailId=null;render()">← Back</button>'+
-    '<div><div class="ptitle">'+esc(a.name)+'</div><div class="xs dim">'+esc(a.id)+' — '+esc(a.location)+'</div></div></div>'+
+    '<button class="btn btn-s xs" onclick="S.detailId=null;S.editingAssetId=null;S.editFields={};render()">← Back</button>'+
+    '<div style="flex:1"><div class="ptitle">'+esc(a.name)+'</div><div class="xs dim">'+esc(a.id)+' — '+esc(a.location)+'</div></div>'+
+    (S.userRole==='admin'?'<button class="btn btn-s" style="font-size:.72rem" onclick="S.editingAssetId=S.editingAssetId===\''+(a.id)+'\''+'?null:\''+(a.id)+'\';'+'S.editFields={};render()">✎ Edit Asset</button>':'')+
+    '</div>'+editFormHTML+
     '<div class="grid4">'+statCards.map(function(c){ return '<div class="card"><div class="xs dim" style="text-transform:uppercase;letter-spacing:.12em;margin-bottom:.3rem">'+c.l+'</div><div class="bold" style="font-size:1.3rem;color:var(--'+c.c+')">'+esc(String(c.v))+'</div></div>'; }).join('')+'</div>'+
     '<div class="card card-amber"><div class="xs amber bold" style="text-transform:uppercase;letter-spacing:.15em;margin-bottom:.5rem">Runtime Formula</div>'+
     '<div class="formula"><span class="sky bold">'+a.reset_count+'</span><span class="dim"> × </span>'+
@@ -1019,6 +1082,265 @@ function exportCSV(data,filename){
   var a=document.createElement('a');
   a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(rows.join('\n'));
   a.download=filename; a.click();
+}
+
+
+// ════════════════════════════════════════════════════════════
+// SAVE ASSET EDITS
+// ════════════════════════════════════════════════════════════
+async function saveAssetEdits(assetId){
+  var a=S.assets.find(function(x){ return x.id===assetId; });
+  if(!a){ toast('Asset not found.','err'); return; }
+  var nameEl=document.getElementById('ef-name');
+  var locEl=document.getElementById('ef-loc');
+  var maxEl=document.getElementById('ef-max');
+  var thrEl=document.getElementById('ef-thr');
+  var stuckEl=document.getElementById('ef-stuck');
+  var resetEl=document.getElementById('ef-reset');
+  var activeEl=document.getElementById('ef-active');
+  var fields={};
+  if(nameEl) fields.name=nameEl.value.trim()||a.name;
+  if(locEl) fields.location=locEl.value;
+  if(maxEl&&maxEl.value!=='') fields.meter_max_value=+maxEl.value;
+  if(thrEl&&thrEl.value!=='') fields.threshold_hours=+thrEl.value;
+  if(stuckEl&&stuckEl.value!=='') fields.stuck_reading=+stuckEl.value;
+  if(resetEl&&resetEl.value!=='') fields.reset_count=+resetEl.value;
+  if(activeEl) fields.active_status=activeEl.value==='true';
+  var r=await DB.from('assets').update(fields).eq('id',assetId);
+  if(r.error){ toast('Save error: '+r.error.message,'err'); return; }
+  S.assets=S.assets.map(function(x){ return x.id===assetId?Object.assign({},x,fields):x; });
+  await logAudit('EDIT','Asset',assetId,'Edited: '+JSON.stringify(fields));
+  S.editingAssetId=null; S.editFields={};
+  toast('Asset updated. ✓','ok');
+  render();
+}
+
+// ════════════════════════════════════════════════════════════
+// AI ADMIN — RENDER
+// ════════════════════════════════════════════════════════════
+function renderAI(){
+  if(S.userRole!=='admin') return '<div class="card"><p class="dim">Admin only.</p></div>';
+  var hints=['Show all assets with critical status','List assets with no readings this month',
+    'Edit asset A001 name to "Pump Motor NW"','Show me assets over threshold in '+fmtMonth(CUR_MONTH),
+    'Correct stuck reading for an asset','What is the total accumulated runtime across all motors?',
+    'Deactivate a retired asset','Add a new motor asset'];
+  var hintsHTML=hints.map(function(h){ return '<button class="ai-hint-btn" onclick="aiQuickSend(\''+esc(h)+'\')">'+esc(h)+'</button>'; }).join('');
+  var msgsHTML=S.aiMessages.length===0?
+    '<div style="flex:1;display:flex;align-items:center;justify-content:center">'+
+    '<div style="text-align:center;color:var(--t3)">'+
+    '<div style="font-size:2rem;margin-bottom:.5rem">⚡</div>'+
+    '<div class="xs" style="text-transform:uppercase;letter-spacing:.15em;color:var(--amber)">AI Admin Console</div>'+
+    '<div class="xs dim" style="margin-top:.4rem;max-width:22rem">Ask anything about your assets, get reports, or instruct me to make database changes — all audited.</div>'+
+    '</div></div>':
+    S.aiMessages.map(function(m){
+      var bubCls=m.role==='user'?'ai-bubble-user':'ai-bubble-ai';
+      var msgCls=m.role==='user'?'ai-msg-user':'ai-msg-ai';
+      var cmdHTML='';
+      if(m.cmds&&m.cmds.length){
+        cmdHTML='<div class="ai-cmd-block">'+m.cmds.map(function(c){
+          return '<div class="ai-cmd-row">'+
+            '<span class="ai-cmd-action">'+(c.ok?'✓':'✗')+' '+esc(c.action)+'</span>'+
+            '<span class="ai-cmd-detail">'+(c.detail?esc(c.detail):'')+'</span>'+
+            (c.err?'<span class="ai-cmd-err xs">'+esc(c.err)+'</span>':'')+
+            '</div>';
+        }).join('')+'</div>';
+      }
+      return '<div class="ai-msg '+msgCls+'">'+
+        '<div class="ai-bubble '+bubCls+'">'+esc(m.text)+'</div>'+
+        cmdHTML+'</div>';
+    }).join('');
+
+  return '<div class="row"><div class="ptitle">AI Admin <span class="role-tag rt-admin xs" style="vertical-align:middle">ADMIN ONLY</span></div>'+
+    '<button class="btn btn-s" style="font-size:.7rem" onclick="S.aiMessages=[];render()">Clear Chat</button></div>'+
+    '<div class="card" style="margin-bottom:.6rem"><div class="xs dim" style="margin-bottom:.4rem">Quick prompts:</div>'+hintsHTML+'</div>'+
+    '<div class="card ai-wrap">'+
+    '<div class="ai-messages" id="ai-msgs">'+msgsHTML+
+    (S.aiLoading?'<div class="ai-msg ai-msg-ai"><div class="ai-bubble ai-bubble-ai dim xs"><span class="spin">◐</span> Thinking…</div></div>':'')+
+    '</div>'+
+    '<div class="ai-input-row">'+
+    '<textarea id="ai-inp" class="ai-inp" placeholder="Ask me anything or give me a command…" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();sendAI()}">'+(S.aiInput?esc(S.aiInput):'')+'</textarea>'+
+    '<button class="ai-send" onclick="sendAI()" '+(S.aiLoading?'disabled':'')+'>Send</button>'+
+    '</div></div>';
+}
+
+function aiQuickSend(text){
+  S.aiInput=text;
+  render();
+  sendAI();
+}
+
+// ════════════════════════════════════════════════════════════
+// AI ADMIN — SEND MESSAGE
+// ════════════════════════════════════════════════════════════
+async function sendAI(){
+  if(S.aiLoading) return;
+  var inpEl=document.getElementById('ai-inp');
+  var text=(inpEl?inpEl.value:S.aiInput).trim();
+  if(!text) return;
+  S.aiMessages.push({role:'user',text:text});
+  S.aiInput='';
+  S.aiLoading=true;
+  render();
+  // Scroll to bottom
+  setTimeout(function(){ var el=document.getElementById('ai-msgs'); if(el) el.scrollTop=el.scrollHeight; },50);
+
+  // Build context snapshot
+  var assetCtx=S.assets.map(function(a){
+    var rds=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return y.month.localeCompare(x.month); });
+    var lat=rds[0];
+    return {id:a.id,name:a.name,location:a.location,active:a.active_status,meter_max:a.meter_max_value,threshold_hrs:a.threshold_hours,reset_count:a.reset_count,stuck_reading:a.stuck_reading,accumulated:calcAcc(a,lat?lat.raw_meter_reading:0),latest_raw:lat?lat.raw_meter_reading:null,latest_month:lat?lat.month:null,latest_status:lat?lat.validation:'NO_DATA'};
+  });
+  var closedCtx=S.closed.slice(-6);
+  var recentReadings=S.readings.filter(function(r){ return r.month>=MONTHS[MONTHS.length-3]; }).length;
+
+  var systemPrompt='You are HourTrack AI Admin — a powerful industrial motor runtime management assistant with FULL ADMIN ACCESS to the HourTrack database.\n\n'+
+    'You help the admin manage assets (motors), correct data, analyze runtime trends, and execute database operations.\n\n'+
+    '== LIVE DATABASE SNAPSHOT ==\n'+
+    'Current month: '+fmtMonth(CUR_MONTH)+'\n'+
+    'Previous month: '+fmtMonth(PREV_MONTH)+'\n'+
+    'Total assets: '+S.assets.length+' ('+S.assets.filter(function(a){return a.active_status;}).length+' active)\n'+
+    'Closed months: '+closedCtx.map(fmtMonth).join(', ')+'\n'+
+    'Recent readings logged: '+recentReadings+'\n\n'+
+    '== ASSETS JSON ==\n'+JSON.stringify(assetCtx,null,1)+'\n\n'+
+    '== AVAILABLE COMMANDS ==\n'+
+    'To execute database changes, include JSON inside <cmd> tags. Examples:\n\n'+
+    'Edit asset fields:\n'+
+    '<cmd>{"action":"editAsset","id":"A001","fields":{"name":"New Name","threshold_hours":250,"location":"Panel A","active_status":true,"stuck_reading":0,"reset_count":0,"meter_max_value":9999}}</cmd>\n\n'+
+    'Correct a monthly reading:\n'+
+    '<cmd>{"action":"upsertReading","asset_id":"A001","month":"2025-01-01","raw_meter_reading":1234}</cmd>\n\n'+
+    'Delete a reading:\n'+
+    '<cmd>{"action":"deleteReading","asset_id":"A001","month":"2025-01-01"}</cmd>\n\n'+
+    'Add a new asset:\n'+
+    '<cmd>{"action":"addAsset","id":"A200","name":"Motor Tag","location":"Panel B","meter_max_value":9999,"threshold_hours":200}</cmd>\n\n'+
+    'Deactivate/activate asset:\n'+
+    '<cmd>{"action":"editAsset","id":"A001","fields":{"active_status":false}}</cmd>\n\n'+
+    'Close a month:\n'+
+    '<cmd>{"action":"closeMonth","month":"2025-01-01"}}</cmd>\n\n'+
+    'Reopen a closed month:\n'+
+    '<cmd>{"action":"openMonth","month":"2025-01-01"}}</cmd>\n\n'+
+    '== RULES ==\n'+
+    '- Always explain what you are about to do BEFORE the <cmd> tags\n'+
+    '- Only include <cmd> blocks when the admin explicitly asks for a change or confirms an action\n'+
+    '- For data queries/analysis, just respond in plain text — no commands needed\n'+
+    '- You may chain multiple <cmd> blocks in one response for bulk operations\n'+
+    '- Always mention asset ID and name when referencing assets\n'+
+    '- Format numbers with commas for readability\n'+
+    '- Keep responses concise and professional — this is an industrial operations tool\n'+
+    '- NEVER invent asset IDs that don\'t exist in the data above';
+
+  // Build messages array for API
+  var apiMsgs=S.aiMessages.slice(0,-1).map(function(m){
+    return {role:m.role==='user'?'user':'assistant',content:m.text};
+  });
+  apiMsgs.push({role:'user',content:text});
+
+  try {
+    var resp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:1500,
+        system:systemPrompt,
+        messages:apiMsgs
+      })
+    });
+    var data=await resp.json();
+    if(data.error){ throw new Error(data.error.message||'API error'); }
+    var rawText=(data.content||[]).map(function(b){ return b.type==='text'?b.text:''; }).join('');
+
+    // Parse and execute commands
+    var cmds=[];
+    var displayText=rawText;
+    var cmdRegex=/<cmd>([\s\S]*?)<\/cmd>/g;
+    var match;
+    while((match=cmdRegex.exec(rawText))!==null){
+      try {
+        var cmd=JSON.parse(match[1].trim());
+        var result=await executeAICommand(cmd);
+        cmds.push(Object.assign({},result,{action:cmd.action}));
+      } catch(e){
+        cmds.push({action:'parse_error',ok:false,err:e.message});
+      }
+    }
+    // Strip cmd blocks from display text
+    displayText=rawText.replace(/<cmd>[\s\S]*?<\/cmd>/g,'').replace(/\n{3,}/g,'\n\n').trim();
+
+    S.aiMessages.push({role:'ai',text:displayText,cmds:cmds});
+  } catch(e){
+    S.aiMessages.push({role:'ai',text:'⚠ Error: '+e.message,cmds:[]});
+  }
+
+  S.aiLoading=false;
+  render();
+  setTimeout(function(){ var el=document.getElementById('ai-msgs'); if(el) el.scrollTop=el.scrollHeight; },60);
+}
+
+// ════════════════════════════════════════════════════════════
+// AI ADMIN — EXECUTE COMMANDS
+// ════════════════════════════════════════════════════════════
+async function executeAICommand(cmd){
+  var a;
+  try {
+    if(cmd.action==='editAsset'){
+      if(!cmd.id||!cmd.fields) return {ok:false,err:'Missing id or fields',detail:''};
+      a=S.assets.find(function(x){ return x.id===cmd.id; });
+      if(!a) return {ok:false,err:'Asset '+cmd.id+' not found',detail:cmd.id};
+      var r=await DB.from('assets').update(cmd.fields).eq('id',cmd.id);
+      if(r.error) return {ok:false,err:r.error.message,detail:cmd.id};
+      S.assets=S.assets.map(function(x){ return x.id===cmd.id?Object.assign({},x,cmd.fields):x; });
+      await logAudit('EDIT','Asset',cmd.id,'AI edited: '+JSON.stringify(cmd.fields));
+      return {ok:true,detail:(a.name)+' — '+Object.keys(cmd.fields).join(', ')+' updated'};
+    }
+    if(cmd.action==='upsertReading'){
+      if(!cmd.asset_id||!cmd.month||cmd.raw_meter_reading===undefined) return {ok:false,err:'Missing fields',detail:''};
+      a=S.assets.find(function(x){ return x.id===cmd.asset_id; });
+      var v=validateReading(a||{id:cmd.asset_id,threshold_hours:200,meter_max_value:9999},S.readings,cmd.raw_meter_reading,cmd.month);
+      var rec={id:uid(),asset_id:cmd.asset_id,month:cmd.month,raw_meter_reading:cmd.raw_meter_reading,locked:false,created_at:new Date().toISOString(),created_by:S.session.user.email+' (AI)',validation:v.status};
+      var r2=await DB.from('monthly_readings').upsert(rec,{onConflict:'asset_id,month'});
+      if(r2.error) return {ok:false,err:r2.error.message,detail:cmd.asset_id};
+      var idx=-1; for(var i=0;i<S.readings.length;i++){ if(S.readings[i].asset_id===cmd.asset_id&&S.readings[i].month===cmd.month){idx=i;break;} }
+      if(idx>=0){ S.readings[idx]=rec; } else { S.readings.push(rec); }
+      await logAudit('EDIT','MonthlyReading',cmd.asset_id,'AI upserted '+fmtMonth(cmd.month)+': '+cmd.raw_meter_reading+' hrs');
+      return {ok:true,detail:(a?a.name:cmd.asset_id)+' '+fmtMonth(cmd.month)+' = '+cmd.raw_meter_reading+' hrs'};
+    }
+    if(cmd.action==='deleteReading'){
+      if(!cmd.asset_id||!cmd.month) return {ok:false,err:'Missing asset_id or month',detail:''};
+      var r3=await DB.from('monthly_readings').delete().eq('asset_id',cmd.asset_id).eq('month',cmd.month);
+      if(r3.error) return {ok:false,err:r3.error.message,detail:''};
+      S.readings=S.readings.filter(function(x){ return !(x.asset_id===cmd.asset_id&&x.month===cmd.month); });
+      await logAudit('DELETE','MonthlyReading',cmd.asset_id,'AI deleted '+fmtMonth(cmd.month)+' reading');
+      return {ok:true,detail:'Deleted '+fmtMonth(cmd.month)+' reading for '+cmd.asset_id};
+    }
+    if(cmd.action==='addAsset'){
+      if(!cmd.id||!cmd.name) return {ok:false,err:'Missing id or name',detail:''};
+      var rec2={id:cmd.id,name:cmd.name,location:cmd.location||'',meter_max_value:cmd.meter_max_value||9999,reset_count:0,stuck_reading:0,created_at:new Date().toISOString().slice(0,10),active_status:true,threshold_hours:cmd.threshold_hours||200};
+      var r4=await DB.from('assets').insert(rec2);
+      if(r4.error) return {ok:false,err:r4.error.message,detail:cmd.id};
+      S.assets.push(rec2);
+      await logAudit('CREATE','Asset',cmd.id,'AI created: '+cmd.name);
+      return {ok:true,detail:'Created '+cmd.id+' — '+cmd.name};
+    }
+    if(cmd.action==='closeMonth'){
+      if(!cmd.month) return {ok:false,err:'Missing month',detail:''};
+      var r5=await DB.from('closed_months').upsert({month:cmd.month,closed_by:S.session.user.email+' (AI)'});
+      if(r5.error) return {ok:false,err:r5.error.message,detail:''};
+      if(S.closed.indexOf(cmd.month)<0) S.closed.push(cmd.month);
+      await logAudit('CLOSE_MONTH','Month',cmd.month,'AI closed '+fmtMonth(cmd.month));
+      return {ok:true,detail:fmtMonth(cmd.month)+' closed'};
+    }
+    if(cmd.action==='openMonth'){
+      if(!cmd.month) return {ok:false,err:'Missing month',detail:''};
+      var r6=await DB.from('closed_months').delete().eq('month',cmd.month);
+      if(r6.error) return {ok:false,err:r6.error.message,detail:''};
+      S.closed=S.closed.filter(function(x){ return x!==cmd.month; });
+      await logAudit('UNLOCK','Month',cmd.month,'AI reopened '+fmtMonth(cmd.month));
+      return {ok:true,detail:fmtMonth(cmd.month)+' reopened'};
+    }
+    return {ok:false,err:'Unknown action: '+cmd.action,detail:''};
+  } catch(e){
+    return {ok:false,err:e.message,detail:''};
+  }
 }
 
 // ════════════════════════════════════════════════════════════

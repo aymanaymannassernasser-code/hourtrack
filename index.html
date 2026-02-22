@@ -1152,21 +1152,29 @@ async function saveAssetEdits(assetId){
 }
 
 // ════════════════════════════════════════════════════════════
-// AI ADMIN — RENDER
+// COMMAND ENGINE — renderAI + all handlers
 // ════════════════════════════════════════════════════════════
+
 function renderAI(){
   if(S.userRole!=='admin') return '<div class="card"><p class="dim">Admin only.</p></div>';
-  var hints=['Show all assets with critical status','List assets with no readings this month',
-    'Edit asset A001 name to "Pump Motor NW"','Show me assets over threshold in '+fmtMonth(CUR_MONTH),
-    'Correct stuck reading for an asset','What is the total accumulated runtime across all motors?',
-    'Deactivate a retired asset','Add a new motor asset'];
-  var hintsHTML=hints.map(function(h){ return '<button class="ai-hint-btn" onclick="aiQuickSend(\''+esc(h)+'\')">'+esc(h)+'</button>'; }).join('');
+
+  var hints=[
+    'show all assets','show critical assets','show warnings',
+    'assets with no readings this month','list MV motors','list LV motors',
+    'show replacements','show closed months','total accumulated runtime',
+    'assets over threshold','summary report','help'
+  ];
+  var hintsHTML=hints.map(function(h){
+    return '<button class="ai-hint-btn" onclick="aiQuickSend(\''+esc(h)+'\')">'+esc(h)+'</button>';
+  }).join('');
+
   var msgsHTML=S.aiMessages.length===0?
     '<div style="flex:1;display:flex;align-items:center;justify-content:center">'+
     '<div style="text-align:center;color:var(--t3)">'+
     '<div style="font-size:2rem;margin-bottom:.5rem">⚡</div>'+
-    '<div class="xs" style="text-transform:uppercase;letter-spacing:.15em;color:var(--amber)">AI Admin Console</div>'+
-    '<div class="xs dim" style="margin-top:.4rem;max-width:22rem">Ask anything about your assets, get reports, or instruct me to make database changes — all audited.</div>'+
+    '<div class="xs" style="text-transform:uppercase;letter-spacing:.15em;color:var(--amber)">HourTrack Command Console</div>'+
+    '<div class="xs dim" style="margin-top:.4rem;max-width:26rem">Type commands in plain language. Ask for reports, edit assets, fix readings, manage months — all executed directly in your database.</div>'+
+    '<div class="xs dim" style="margin-top:.3rem">Type <span class="amber">help</span> to see all commands.</div>'+
     '</div></div>':
     S.aiMessages.map(function(m){
       var bubCls=m.role==='user'?'ai-bubble-user':'ai-bubble-ai';
@@ -1177,12 +1185,12 @@ function renderAI(){
           return '<div class="ai-cmd-row">'+
             '<span class="ai-cmd-action">'+(c.ok?'✓':'✗')+' '+esc(c.action)+'</span>'+
             '<span class="ai-cmd-detail">'+(c.detail?esc(c.detail):'')+'</span>'+
-            (c.err?'<span class="ai-cmd-err xs">'+esc(c.err)+'</span>':'')+
+            (c.err?'<span class="ai-cmd-err xs"> — '+esc(c.err)+'</span>':'')+
             '</div>';
         }).join('')+'</div>';
       }
       return '<div class="ai-msg '+msgCls+'">'+
-        '<div class="ai-bubble '+bubCls+'">'+esc(m.text)+'</div>'+
+        '<div class="ai-bubble '+bubCls+'" style="white-space:pre-wrap">'+esc(m.text)+'</div>'+
         cmdHTML+'</div>';
     }).join('');
 
@@ -1192,21 +1200,26 @@ function renderAI(){
     '<div style="display:flex;align-items:center;gap:.4rem">'+
     '<label class="lbl" style="margin:0;white-space:nowrap">Normal Jump Threshold (hrs/month):</label>'+
     '<input id="jt-inp" class="inp" type="number" min="1" style="width:6rem" value="'+(S.jumpThreshold||800)+'" oninput="aiUpdateThreshold(this.value)">'+
-    '<span class="xs dim">LV motors max 10,000 hrs · MV motors max 65,535 hrs (auto-detected from CC/CB in drawer location)</span>'+
+    '<span class="xs dim">LV motors max 10,000 hrs · MV motors max 65,535 hrs (auto-detected from CC/CB in drawer)</span>'+
     '</div></div></div>';
 
-  return '<div class="row"><div class="ptitle">AI Admin <span class="role-tag rt-admin xs" style="vertical-align:middle">ADMIN ONLY</span></div>'+
-    '<button class="btn btn-s" style="font-size:.7rem" onclick="S.aiMessages=[];render()">Clear Chat</button></div>'+
+  return '<div class="row"><div class="ptitle">Command Console <span class="role-tag rt-admin xs" style="vertical-align:middle">ADMIN ONLY</span></div>'+
+    '<button class="btn btn-s" style="font-size:.7rem" onclick="S.aiMessages=[];render()">Clear</button></div>'+
     settingsBar+
-    '<div class="card" style="margin-bottom:.6rem"><div class="xs dim" style="margin-bottom:.4rem">Quick prompts:</div>'+hintsHTML+'</div>'+
+    '<div class="card" style="margin-bottom:.6rem"><div class="xs dim" style="margin-bottom:.4rem">Quick commands:</div>'+hintsHTML+'</div>'+
     '<div class="card ai-wrap">'+
     '<div class="ai-messages" id="ai-msgs">'+msgsHTML+
-    (S.aiLoading?'<div class="ai-msg ai-msg-ai"><div class="ai-bubble ai-bubble-ai dim xs"><span class="spin">◐</span> Thinking…</div></div>':'')+
+    (S.aiLoading?'<div class="ai-msg ai-msg-ai"><div class="ai-bubble ai-bubble-ai dim xs"><span class="spin">◐</span> Processing…</div></div>':'')+
     '</div>'+
     '<div class="ai-input-row">'+
-    '<textarea id="ai-inp" class="ai-inp" placeholder="Ask me anything or give me a command…" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();sendAI()}">'+(S.aiInput?esc(S.aiInput):'')+'</textarea>'+
-    '<button class="ai-send" onclick="sendAI()" '+(S.aiLoading?'disabled':'')+'>Send</button>'+
+    '<textarea id="ai-inp" class="ai-inp" placeholder="Type a command…  e.g.  show critical  |  edit A012 name to Pump 3  |  set threshold to 750" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();sendAI()}">'+(S.aiInput?esc(S.aiInput):'')+'</textarea>'+
+    '<button class="ai-send" onclick="sendAI()" '+(S.aiLoading?'disabled':'')+'>Run</button>'+
     '</div></div>';
+}
+
+function aiQuickSend(text){
+  S.aiInput=text;
+  sendAI();
 }
 
 function autoFillMeterMax(loc){
@@ -1218,204 +1231,480 @@ function autoFillMeterMax(loc){
   else if(t==='LV'){ maxEl.value=10000; if(lblEl) lblEl.textContent='Meter Max Value — LV motor (10,000 auto)'; }
   else { maxEl.value=9999; if(lblEl) lblEl.textContent='Meter Max Value'; }
 }
+
 async function aiUpdateThreshold(val){
   var n=+val;
   if(isNaN(n)||n<1) return;
   S.jumpThreshold=n;
-  // Persist to Supabase so ALL users and ALL browsers see the same value
   var r=await DB.from('app_settings').upsert({key:'jump_threshold',value:String(n)},{onConflict:'key'});
-  if(r.error){ toast('Could not save threshold to database: '+r.error.message,'err'); }
+  if(r.error){ toast('Could not save: '+r.error.message,'err'); }
   else { toast('Jump threshold updated to '+n+' hrs for all users. ✓','ok'); render(); }
 }
 
-function aiQuickSend(text){
-  S.aiInput=text;
-  render();
-  sendAI();
-}
+// ════════════════════════════════════════════════════════════
+// COMMAND PROCESSOR — pure JS, no external API
+// ════════════════════════════════════════════════════════════
 
-// ════════════════════════════════════════════════════════════
-// AI ADMIN — SEND MESSAGE
-// ════════════════════════════════════════════════════════════
 async function sendAI(){
   if(S.aiLoading) return;
   var inpEl=document.getElementById('ai-inp');
-  var text=(inpEl?inpEl.value:S.aiInput).trim();
-  if(!text) return;
-  S.aiMessages.push({role:'user',text:text});
+  var raw=(inpEl?inpEl.value:S.aiInput).trim();
+  if(!raw) return;
+  if(inpEl) inpEl.value='';
   S.aiInput='';
-  S.aiLoading=true;
-  render();
-  // Scroll to bottom
-  setTimeout(function(){ var el=document.getElementById('ai-msgs'); if(el) el.scrollTop=el.scrollHeight; },50);
+  S.aiMessages.push({role:'user',text:raw});
+  S.aiLoading=true; render();
+  setTimeout(function(){ var el=document.getElementById('ai-msgs'); if(el) el.scrollTop=el.scrollHeight; },40);
 
-  // Build context snapshot
-  var assetCtx=S.assets.map(function(a){
-    var rds=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return y.month.localeCompare(x.month); });
-    var lat=rds[0];
-    return {id:a.id,name:a.name,location:a.location,active:a.active_status,meter_max:a.meter_max_value,threshold_hrs:a.threshold_hours,reset_count:a.reset_count,stuck_reading:a.stuck_reading,accumulated:calcAcc(a,lat?lat.raw_meter_reading:0),latest_raw:lat?lat.raw_meter_reading:null,latest_month:lat?lat.month:null,latest_status:lat?lat.validation:'NO_DATA'};
-  });
-  var closedCtx=S.closed.slice(-6);
-  var recentReadings=S.readings.filter(function(r){ return r.month>=MONTHS[MONTHS.length-3]; }).length;
+  // Small artificial delay so it feels like it's "thinking"
+  await new Promise(function(res){ setTimeout(res, 280); });
 
-  var systemPrompt='You are HourTrack AI Admin — a powerful industrial motor runtime management assistant with FULL ADMIN ACCESS to the HourTrack database.\n\n'+
-    'You help the admin manage assets (motors), correct data, analyze runtime trends, and execute database operations.\n\n'+
-    '== LIVE DATABASE SNAPSHOT ==\n'+
-    'Current month: '+fmtMonth(CUR_MONTH)+'\n'+'Global jump threshold: '+(S.jumpThreshold||800)+' hrs/month\n'+'Motor types: MV (CB in drawer) = 65535 hr counter, LV (CC in drawer) = 10000 hr counter\n'+
-    'Previous month: '+fmtMonth(PREV_MONTH)+'\n'+
-    'Total assets: '+S.assets.length+' ('+S.assets.filter(function(a){return a.active_status;}).length+' active)\n'+
-    'Closed months: '+closedCtx.map(fmtMonth).join(', ')+'\n'+
-    'Recent readings logged: '+recentReadings+'\n\n'+
-    '== ASSETS JSON ==\n'+JSON.stringify(assetCtx,null,1)+'\n\n'+
-    '== AVAILABLE COMMANDS ==\n'+
-    'To execute database changes, include JSON inside <cmd> tags. Examples:\n\n'+
-    'Edit asset fields:\n'+
-    '<cmd>{"action":"editAsset","id":"A001","fields":{"name":"New Name","threshold_hours":250,"location":"Panel A","active_status":true,"stuck_reading":0,"reset_count":0,"meter_max_value":9999}}</cmd>\n\n'+
-    'Correct a monthly reading:\n'+
-    '<cmd>{"action":"upsertReading","asset_id":"A001","month":"2025-01-01","raw_meter_reading":1234}</cmd>\n\n'+
-    'Delete a reading:\n'+
-    '<cmd>{"action":"deleteReading","asset_id":"A001","month":"2025-01-01"}</cmd>\n\n'+
-    'Add a new asset:\n'+
-    '<cmd>{"action":"addAsset","id":"A200","name":"Motor Tag","location":"185CB12A","meter_max_value":65535,"threshold_hours":0}</cmd>\n'+'// threshold_hours:0 means use global jump threshold. meter_max auto-detected from CB=65535/CC=10000\n\n'+
-    'Deactivate/activate asset:\n'+
-    '<cmd>{"action":"editAsset","id":"A001","fields":{"active_status":false}}</cmd>\n\n'+
-    'Close a month:\n'+
-    '<cmd>{"action":"closeMonth","month":"2025-01-01"}}</cmd>\n\n'+
-    'Reopen a closed month:\n'+
-    '<cmd>{"action":"openMonth","month":"2025-01-01"}}</cmd>\n\n'+
-    '== RULES ==\n'+
-    '- Always explain what you are about to do BEFORE the <cmd> tags\n'+
-    '- Only include <cmd> blocks when the admin explicitly asks for a change or confirms an action\n'+
-    '- For data queries/analysis, just respond in plain text — no commands needed\n'+
-    '- You may chain multiple <cmd> blocks in one response for bulk operations\n'+
-    '- Always mention asset ID and name when referencing assets\n'+
-    '- Format numbers with commas for readability\n'+
-    '- Keep responses concise and professional — this is an industrial operations tool\n'+
-    '- NEVER invent asset IDs that don\'t exist in the data above';
-
-  // Build messages array for API
-  var apiMsgs=S.aiMessages.slice(0,-1).map(function(m){
-    return {role:m.role==='user'?'user':'assistant',content:m.text};
-  });
-  apiMsgs.push({role:'user',content:text});
-
-  // Build full conversation as a single prompt for Pollinations GET API
-  // Include recent history for context (last 4 exchanges)
-  var historyCtx='';
-  var histSlice=S.aiMessages.slice(0,-1).slice(-8);
-  if(histSlice.length){
-    historyCtx='\n\n== CONVERSATION HISTORY ==\n'+
-      histSlice.map(function(m){ return (m.role==='user'?'User: ':'Assistant: ')+m.text; }).join('\n');
-  }
-  var fullPrompt=historyCtx+'\n\nUser: '+text;
-
-  try {
-    var _url='https://text.pollinations.ai/'+
-      encodeURIComponent(fullPrompt)+
-      '?model=openai-large'+
-      '&system='+encodeURIComponent(systemPrompt)+
-      '&seed='+Math.floor(Math.random()*99999)+
-      '&private=true';
-    var resp=await fetch(_url);
-    if(!resp.ok){ throw new Error('AI service error: '+resp.status+' '+resp.statusText); }
-    var rawText=await resp.text();
-    if(!rawText||!rawText.trim()){ throw new Error('Empty response from AI service — try again.'); }
-
-    // Parse and execute commands
-    var cmds=[];
-    var displayText=rawText;
-    var cmdRegex=/<cmd>([\s\S]*?)<\/cmd>/g;
-    var match;
-    while((match=cmdRegex.exec(rawText))!==null){
-      try {
-        var cmd=JSON.parse(match[1].trim());
-        var result=await executeAICommand(cmd);
-        cmds.push(Object.assign({},result,{action:cmd.action}));
-      } catch(e){
-        cmds.push({action:'parse_error',ok:false,err:e.message});
-      }
-    }
-    // Strip cmd blocks from display text
-    displayText=rawText.replace(/<cmd>[\s\S]*?<\/cmd>/g,'').replace(/\n{3,}/g,'\n\n').trim();
-
-    S.aiMessages.push({role:'ai',text:displayText,cmds:cmds});
-  } catch(e){
-    S.aiMessages.push({role:'ai',text:'⚠ Error: '+e.message,cmds:[]});
-  }
-
-  S.aiLoading=false;
-  render();
+  var result=await processCommand(raw.toLowerCase().trim(), raw.trim());
+  S.aiMessages.push({role:'ai', text:result.text, cmds:result.cmds||[]});
+  S.aiLoading=false; render();
   setTimeout(function(){ var el=document.getElementById('ai-msgs'); if(el) el.scrollTop=el.scrollHeight; },60);
 }
 
-// ════════════════════════════════════════════════════════════
-// AI ADMIN — EXECUTE COMMANDS
-// ════════════════════════════════════════════════════════════
-async function executeAICommand(cmd){
-  var a;
-  try {
-    if(cmd.action==='editAsset'){
-      if(!cmd.id||!cmd.fields) return {ok:false,err:'Missing id or fields',detail:''};
-      a=S.assets.find(function(x){ return x.id===cmd.id; });
-      if(!a) return {ok:false,err:'Asset '+cmd.id+' not found',detail:cmd.id};
-      var r=await DB.from('assets').update(cmd.fields).eq('id',cmd.id);
-      if(r.error) return {ok:false,err:r.error.message,detail:cmd.id};
-      S.assets=S.assets.map(function(x){ return x.id===cmd.id?Object.assign({},x,cmd.fields):x; });
-      await logAudit('EDIT','Asset',cmd.id,'AI edited: '+JSON.stringify(cmd.fields));
-      return {ok:true,detail:(a.name)+' — '+Object.keys(cmd.fields).join(', ')+' updated'};
-    }
-    if(cmd.action==='upsertReading'){
-      if(!cmd.asset_id||!cmd.month||cmd.raw_meter_reading===undefined) return {ok:false,err:'Missing fields',detail:''};
-      a=S.assets.find(function(x){ return x.id===cmd.asset_id; });
-      var v=validateReading(a||{id:cmd.asset_id,threshold_hours:0,meter_max_value:9999,location:''},S.readings,cmd.raw_meter_reading,cmd.month);
-      var rec={id:uid(),asset_id:cmd.asset_id,month:cmd.month,raw_meter_reading:cmd.raw_meter_reading,locked:false,created_at:new Date().toISOString(),created_by:S.session.user.email+' (AI)',validation:v.status};
-      var r2=await DB.from('monthly_readings').upsert(rec,{onConflict:'asset_id,month'});
-      if(r2.error) return {ok:false,err:r2.error.message,detail:cmd.asset_id};
-      var idx=-1; for(var i=0;i<S.readings.length;i++){ if(S.readings[i].asset_id===cmd.asset_id&&S.readings[i].month===cmd.month){idx=i;break;} }
-      if(idx>=0){ S.readings[idx]=rec; } else { S.readings.push(rec); }
-      await logAudit('EDIT','MonthlyReading',cmd.asset_id,'AI upserted '+fmtMonth(cmd.month)+': '+cmd.raw_meter_reading+' hrs');
-      return {ok:true,detail:(a?a.name:cmd.asset_id)+' '+fmtMonth(cmd.month)+' = '+cmd.raw_meter_reading+' hrs'};
-    }
-    if(cmd.action==='deleteReading'){
-      if(!cmd.asset_id||!cmd.month) return {ok:false,err:'Missing asset_id or month',detail:''};
-      var r3=await DB.from('monthly_readings').delete().eq('asset_id',cmd.asset_id).eq('month',cmd.month);
-      if(r3.error) return {ok:false,err:r3.error.message,detail:''};
-      S.readings=S.readings.filter(function(x){ return !(x.asset_id===cmd.asset_id&&x.month===cmd.month); });
-      await logAudit('DELETE','MonthlyReading',cmd.asset_id,'AI deleted '+fmtMonth(cmd.month)+' reading');
-      return {ok:true,detail:'Deleted '+fmtMonth(cmd.month)+' reading for '+cmd.asset_id};
-    }
-    if(cmd.action==='addAsset'){
-      if(!cmd.id||!cmd.name) return {ok:false,err:'Missing id or name',detail:''};
-      var _aloc=cmd.location||'';
-      var _amax=cmd.meter_max_value||(getMotorType(_aloc)==='MV'?65535:getMotorType(_aloc)==='LV'?10000:9999);
-      var rec2={id:cmd.id,name:cmd.name,location:_aloc,meter_max_value:_amax,reset_count:0,stuck_reading:0,created_at:new Date().toISOString().slice(0,10),active_status:true,threshold_hours:cmd.threshold_hours||0};
-      var r4=await DB.from('assets').insert(rec2);
-      if(r4.error) return {ok:false,err:r4.error.message,detail:cmd.id};
-      S.assets.push(rec2);
-      await logAudit('CREATE','Asset',cmd.id,'AI created: '+cmd.name);
-      return {ok:true,detail:'Created '+cmd.id+' — '+cmd.name};
-    }
-    if(cmd.action==='closeMonth'){
-      if(!cmd.month) return {ok:false,err:'Missing month',detail:''};
-      var r5=await DB.from('closed_months').upsert({month:cmd.month,closed_by:S.session.user.email+' (AI)'});
-      if(r5.error) return {ok:false,err:r5.error.message,detail:''};
-      if(S.closed.indexOf(cmd.month)<0) S.closed.push(cmd.month);
-      await logAudit('CLOSE_MONTH','Month',cmd.month,'AI closed '+fmtMonth(cmd.month));
-      return {ok:true,detail:fmtMonth(cmd.month)+' closed'};
-    }
-    if(cmd.action==='openMonth'){
-      if(!cmd.month) return {ok:false,err:'Missing month',detail:''};
-      var r6=await DB.from('closed_months').delete().eq('month',cmd.month);
-      if(r6.error) return {ok:false,err:r6.error.message,detail:''};
-      S.closed=S.closed.filter(function(x){ return x!==cmd.month; });
-      await logAudit('UNLOCK','Month',cmd.month,'AI reopened '+fmtMonth(cmd.month));
-      return {ok:true,detail:fmtMonth(cmd.month)+' reopened'};
-    }
-    return {ok:false,err:'Unknown action: '+cmd.action,detail:''};
-  } catch(e){
-    return {ok:false,err:e.message,detail:''};
-  }
+// ── helpers ──────────────────────────────────────────────────────────────────
+function findAsset(q){
+  // Match by exact ID, then ID substring, then name substring
+  q=q.trim().toUpperCase();
+  var exact=S.assets.find(function(a){ return a.id.toUpperCase()===q; });
+  if(exact) return exact;
+  var byId=S.assets.find(function(a){ return a.id.toUpperCase().indexOf(q)>=0; });
+  if(byId) return byId;
+  var byName=S.assets.find(function(a){ return a.name.toUpperCase().indexOf(q)>=0; });
+  return byName||null;
 }
+function fmtAssetLine(a){
+  var rds=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return y.month.localeCompare(x.month); });
+  var lat=rds[0];
+  var acc=calcAcc(a,lat?lat.raw_meter_reading:0);
+  var type=getMotorType(a.location);
+  return '['+a.id+'] '+a.name+' | '+esc(a.location)+' | '+type+' | '+acc.toLocaleString()+' hrs acc | '+(lat?lat.validation:'NO DATA')+(a.active_status?'':' | INACTIVE');
+}
+function tbl(headers, rows){
+  // Returns a plain-text table string
+  var sep='  ';
+  var lines=[headers.join(sep)];
+  lines.push(headers.map(function(h){ return h.replace(/./g,'─'); }).join(sep));
+  rows.forEach(function(r){ lines.push(r.join(sep)); });
+  return lines.join('\n');
+}
+function parseMonth(s){
+  // Accept "jan 2025", "2025-01", "january 2025", "01/2025"
+  var months={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12,
+    january:1,february:2,march:3,april:4,june:6,july:7,august:8,september:9,october:10,november:11,december:12};
+  var m=s.trim().toLowerCase();
+  // YYYY-MM
+  var iso=m.match(/^(\d{4})-(\d{2})$/);
+  if(iso) return iso[1]+'-'+iso[2]+'-01';
+  // Mon YYYY or YYYY Mon
+  var my=m.match(/^([a-z]+)\s+(\d{4})$/);
+  if(my&&months[my[1]]) return my[2]+'-'+String(months[my[1]]).padStart(2,'0')+'-01';
+  var ym=m.match(/^(\d{4})\s+([a-z]+)$/);
+  if(ym&&months[ym[2]]) return ym[1]+'-'+String(months[ym[2]]).padStart(2,'0')+'-01';
+  // MM/YYYY
+  var sl=m.match(/^(\d{1,2})\/(\d{4})$/);
+  if(sl) return sl[2]+'-'+String(+sl[1]).padStart(2,'0')+'-01';
+  return null;
+}
+
+// ── MAIN COMMAND ROUTER ───────────────────────────────────────────────────────
+async function processCommand(q, raw){
+  var jt=S.jumpThreshold||800;
+
+  // ── HELP ─────────────────────────────────────────────────────────────────
+  if(/^help$|^what can you do|^commands/.test(q)){
+    return {text:
+'QUERY COMMANDS\n'+
+'──────────────────────────────────────────────────────\n'+
+'show all assets\n'+
+'show active assets\n'+
+'show inactive assets\n'+
+'show critical assets\n'+
+'show warning assets\n'+
+'show MV motors  /  show LV motors\n'+
+'assets with no readings this month\n'+
+'assets over threshold\n'+
+'show asset A012  (or any ID or name)\n'+
+'total accumulated runtime\n'+
+'summary report\n'+
+'show replacements\n'+
+'show closed months\n'+
+'show readings for A012\n'+
+'\nEDIT COMMANDS\n'+
+'──────────────────────────────────────────────────────\n'+
+'edit A012 name to "New Name"\n'+
+'edit A012 location to "185CB12A +03.17"\n'+
+'edit A012 threshold to 750\n'+
+'edit A012 meter max to 65535\n'+
+'edit A012 reset count to 3\n'+
+'edit A012 stuck reading to 15000\n'+
+'deactivate A012  /  activate A012\n'+
+'\nREADINGS\n'+
+'──────────────────────────────────────────────────────\n'+
+'set reading for A012 in Jan 2025 to 7823\n'+
+'delete reading for A012 in Jan 2025\n'+
+'\nMONTHS\n'+
+'──────────────────────────────────────────────────────\n'+
+'close month Jan 2025\n'+
+'reopen month Jan 2025\n'+
+'\nSETTINGS\n'+
+'──────────────────────────────────────────────────────\n'+
+'set threshold to 750\n'+
+'\nTip: You can reference assets by ID (A012) or by any part of their name.'};
+  }
+
+  // ── SET GLOBAL THRESHOLD ──────────────────────────────────────────────────
+  var thr=q.match(/set\s+(global\s+)?threshold\s+to\s+(\d+)/);
+  if(thr){
+    var n=+thr[2];
+    if(n<1||n>10000) return {text:'Threshold must be between 1 and 10,000 hrs.'};
+    S.jumpThreshold=n;
+    var r=await DB.from('app_settings').upsert({key:'jump_threshold',value:String(n)},{onConflict:'key'});
+    if(r.error) return {text:'Database error: '+r.error.message};
+    await logAudit('EDIT','AppSettings','jump_threshold','Set global jump threshold to '+n+' hrs');
+    render();
+    return {text:'Global jump threshold set to '+n+' hrs/month for all users.', cmds:[{ok:true,action:'setThreshold',detail:n+' hrs/month'}]};
+  }
+
+  // ── SHOW ALL / FILTERED ASSETS ────────────────────────────────────────────
+  if(/^show all assets?$|^list all assets?$|^all assets?$/.test(q)){
+    if(!S.assets.length) return {text:'No assets in database yet.'};
+    return {text:'All assets ('+S.assets.length+'):\n\n'+S.assets.map(fmtAssetLine).join('\n')};
+  }
+  if(/^show active|^list active|^active assets/.test(q)){
+    var a=S.assets.filter(function(x){ return x.active_status; });
+    return {text:'Active assets ('+a.length+'):\n\n'+a.map(fmtAssetLine).join('\n')};
+  }
+  if(/^show inactive|^list inactive|^inactive assets/.test(q)){
+    var a=S.assets.filter(function(x){ return !x.active_status; });
+    return {text:a.length?'Inactive assets ('+a.length+'):\n\n'+a.map(fmtAssetLine).join('\n'):'No inactive assets.'};
+  }
+  if(/show mv motor|list mv motor|mv motor/.test(q)){
+    var a=S.assets.filter(function(x){ return getMotorType(x.location)==='MV'; });
+    return {text:a.length?'MV motors ('+a.length+') — 65,535 hr counter:\n\n'+a.map(fmtAssetLine).join('\n'):'No MV motors found. MV motors have CB in their drawer location.'};
+  }
+  if(/show lv motor|list lv motor|lv motor/.test(q)){
+    var a=S.assets.filter(function(x){ return getMotorType(x.location)==='LV'; });
+    return {text:a.length?'LV motors ('+a.length+') — 10,000 hr counter:\n\n'+a.map(fmtAssetLine).join('\n'):'No LV motors found. LV motors have CC in their drawer location.'};
+  }
+
+  // ── CRITICAL / WARNING ────────────────────────────────────────────────────
+  if(/critical/.test(q)&&!/^show asset|^edit|^set reading/.test(q)){
+    var crits=[];
+    S.assets.forEach(function(a){
+      var lat=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return y.month.localeCompare(x.month); })[0];
+      if(lat&&lat.validation==='CRITICAL') crits.push(a);
+    });
+    return {text:crits.length?'Assets with CRITICAL status ('+crits.length+'):\n\n'+crits.map(fmtAssetLine).join('\n'):'No critical assets this month. ✓'};
+  }
+  if(/warning/.test(q)&&!/^edit|^set reading/.test(q)){
+    var warns=[];
+    S.assets.forEach(function(a){
+      var lat=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return y.month.localeCompare(x.month); })[0];
+      if(lat&&lat.validation==='WARNING') warns.push(a);
+    });
+    return {text:warns.length?'Assets with WARNING status ('+warns.length+'):\n\n'+warns.map(fmtAssetLine).join('\n'):'No warning assets this month. ✓'};
+  }
+
+  // ── NO READINGS THIS MONTH ────────────────────────────────────────────────
+  if(/no readings?.*(this month|current)|missing readings/.test(q)){
+    var missing=S.assets.filter(function(a){
+      return a.active_status&&!S.readings.find(function(r){ return r.asset_id===a.id&&r.month===CUR_MONTH; });
+    });
+    return {text:missing.length?
+      'Active assets with no reading in '+fmtMonth(CUR_MONTH)+' ('+missing.length+'):\n\n'+missing.map(function(a){ return '['+a.id+'] '+a.name+' | '+a.location; }).join('\n'):
+      'All active assets have readings for '+fmtMonth(CUR_MONTH)+'. ✓'};
+  }
+
+  // ── ASSETS OVER THRESHOLD ─────────────────────────────────────────────────
+  if(/over threshold|exceed.*(threshold|limit)|above threshold/.test(q)){
+    var over=[];
+    S.assets.forEach(function(a){
+      var rds=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return y.month.localeCompare(x.month); });
+      var lat=rds[0], prev=rds[1];
+      if(lat&&prev){
+        var delta=lat.raw_meter_reading-prev.raw_meter_reading;
+        var thr2=(a.threshold_hours&&a.threshold_hours>0)?a.threshold_hours:jt;
+        if(delta>thr2) over.push({a:a,delta:delta,thr:thr2});
+      }
+    });
+    if(!over.length) return {text:'No assets exceeded the jump threshold this month. ✓'};
+    return {text:'Assets over threshold ('+over.length+'):\n\n'+over.map(function(o){
+      return '['+o.a.id+'] '+o.a.name+' — +'+o.delta+' hrs vs '+o.thr+' hr limit (+'+(o.delta-o.thr)+' over)';
+    }).join('\n')};
+  }
+
+  // ── TOTAL ACCUMULATED RUNTIME ─────────────────────────────────────────────
+  if(/total.*(accumulated|runtime|hours?)|accumulated.*total/.test(q)){
+    var total=0, active=0, mv=0, lv=0;
+    S.assets.forEach(function(a){
+      var lat=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return y.month.localeCompare(x.month); })[0];
+      var acc=calcAcc(a,lat?lat.raw_meter_reading:0);
+      total+=acc;
+      if(a.active_status) active+=acc;
+      if(getMotorType(a.location)==='MV') mv+=acc;
+      if(getMotorType(a.location)==='LV') lv+=acc;
+    });
+    return {text:'Total accumulated runtime across all assets:\n\n'+
+      '  All assets:    '+total.toLocaleString()+' hrs\n'+
+      '  Active only:   '+active.toLocaleString()+' hrs\n'+
+      '  MV motors:     '+mv.toLocaleString()+' hrs\n'+
+      '  LV motors:     '+lv.toLocaleString()+' hrs\n\n'+
+      'Total assets: '+S.assets.length+' ('+S.assets.filter(function(a){ return a.active_status; }).length+' active)'};
+  }
+
+  // ── SUMMARY REPORT ────────────────────────────────────────────────────────
+  if(/^summary|^report$|^status report/.test(q)){
+    var active=S.assets.filter(function(a){ return a.active_status; });
+    var warns2=0,crits2=0,nodata=0,resets=0;
+    active.forEach(function(a){
+      var lat=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return y.month.localeCompare(x.month); })[0];
+      if(!lat) nodata++;
+      else if(lat.validation==='CRITICAL') crits2++;
+      else if(lat.validation==='WARNING') warns2++;
+      else if(lat.validation==='RESET') resets++;
+    });
+    var closedLast=S.closed.length?fmtMonth(S.closed[S.closed.length-1]):'None';
+    var mvCount=S.assets.filter(function(a){ return getMotorType(a.location)==='MV'; }).length;
+    var lvCount=S.assets.filter(function(a){ return getMotorType(a.location)==='LV'; }).length;
+    return {text:'HourTrack Summary — '+fmtMonth(CUR_MONTH)+'\n'+
+      '══════════════════════════════════════\n'+
+      'Total assets:      '+S.assets.length+' ('+active.length+' active, '+(S.assets.length-active.length)+' inactive)\n'+
+      'MV motors (CB):    '+mvCount+'\n'+
+      'LV motors (CC):    '+lvCount+'\n'+
+      '──────────────────────────────────────\n'+
+      'Status this month:\n'+
+      '  OK:              '+(active.length-warns2-crits2-nodata-resets)+'\n'+
+      '  WARNING:         '+warns2+'\n'+
+      '  CRITICAL:        '+crits2+'\n'+
+      '  RESET/Rollover:  '+resets+'\n'+
+      '  No data yet:     '+nodata+'\n'+
+      '──────────────────────────────────────\n'+
+      'Jump threshold:    '+(S.jumpThreshold||800)+' hrs/month\n'+
+      'Closed months:     '+S.closed.length+'\n'+
+      'Last closed:       '+closedLast+'\n'+
+      'Total replacements:'+S.repls.length};
+  }
+
+  // ── SHOW REPLACEMENTS ─────────────────────────────────────────────────────
+  if(/^show replacements?|^list replacements?|^replacements?$/.test(q)){
+    if(!S.repls.length) return {text:'No meter replacements logged yet.'};
+    return {text:'Meter replacements ('+S.repls.length+'):\n\n'+
+      S.repls.slice().reverse().map(function(r){
+        var a=S.assets.find(function(x){ return x.id===r.asset_id; });
+        return fmtMonth(r.replacement_date)+' — ['+(a?a.id:r.asset_id)+'] '+(a?a.name:r.asset_id)+
+          ' — Reset '+r.previous_reset_count+' → '+r.new_reset_count+
+          ' — Last reading: '+r.last_stuck_reading.toLocaleString()+' hrs'+
+          (r.notes?' — '+r.notes:'');
+      }).join('\n')};
+  }
+
+  // ── SHOW CLOSED MONTHS ────────────────────────────────────────────────────
+  if(/closed months?|locked months?/.test(q)){
+    return {text:S.closed.length?
+      'Closed months ('+S.closed.length+'):\n\n'+S.closed.map(fmtMonth).join('\n'):
+      'No months have been closed yet.'};
+  }
+
+  // ── SHOW SPECIFIC ASSET ───────────────────────────────────────────────────
+  var showAsset=q.match(/^show asset\s+(.+)$|^info(?:rmation)?\s+(?:on\s+|for\s+|about\s+)?(.+)$|^details?\s+(?:for\s+|of\s+)?(.+)$/);
+  if(showAsset){
+    var term=(showAsset[1]||showAsset[2]||showAsset[3]||'').trim();
+    var a=findAsset(term);
+    if(!a) return {text:'Asset not found: "'+term+'". Try "show all assets" to see IDs.'};
+    var rds=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return x.month.localeCompare(y.month); });
+    var lat=rds[rds.length-1];
+    var acc=calcAcc(a,lat?lat.raw_meter_reading:0);
+    var type=getMotorType(a.location);
+    var rlines=rds.slice(-6).reverse().map(function(r,i){
+      var prev2=rds[rds.length-2-i];
+      var delta=prev2?r.raw_meter_reading-prev2.raw_meter_reading:null;
+      return '  '+fmtMonth(r.month)+':  '+r.raw_meter_reading.toLocaleString()+' hrs raw'+(delta!==null?'  (Δ '+delta+')':'')+'  ['+r.validation+']';
+    }).join('\n');
+    return {text:
+      '['+a.id+'] '+a.name+'\n'+
+      '════════════════════════════════\n'+
+      'Location:      '+a.location+'\n'+
+      'Type:          '+type+' motor ('+getMeterMax(a).toLocaleString()+' hr counter)\n'+
+      'Status:        '+(a.active_status?'Active':'INACTIVE')+'\n'+
+      'Accumulated:   '+acc.toLocaleString()+' hrs\n'+
+      'Reset count:   '+a.reset_count+'×\n'+
+      'Stuck reading: '+a.stuck_reading.toLocaleString()+' hrs\n'+
+      'Latest raw:    '+(lat?lat.raw_meter_reading.toLocaleString()+' hrs  ['+lat.validation+']':'No readings')+'\n'+
+      'Jump threshold: '+((a.threshold_hours&&a.threshold_hours>0)?a.threshold_hours:(S.jumpThreshold||800))+' hrs/month\n'+
+      '\nRecent readings:\n'+rlines};
+  }
+
+  // ── SHOW READINGS FOR ASSET ───────────────────────────────────────────────
+  var showReadings=q.match(/^show readings?\s+(?:for\s+)?(.+)$/);
+  if(showReadings){
+    var term=showReadings[1].trim();
+    var a=findAsset(term);
+    if(!a) return {text:'Asset not found: "'+term+'".'};
+    var rds=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return x.month.localeCompare(y.month); });
+    if(!rds.length) return {text:'No readings found for ['+a.id+'] '+a.name+'.'};
+    return {text:'All readings for ['+a.id+'] '+a.name+' ('+rds.length+'):\n\n'+
+      rds.map(function(r,i){
+        var prev2=rds[i-1];
+        var delta=prev2?r.raw_meter_reading-prev2.raw_meter_reading:null;
+        return fmtMonth(r.month)+':  '+r.raw_meter_reading.toLocaleString()+' hrs raw'+
+          (delta!==null?'  Δ '+delta:'  (first)')+
+          '  acc: '+calcAcc(a,r.raw_meter_reading).toLocaleString()+
+          '  ['+r.validation+']'+
+          (r.locked?'  🔒':'');
+      }).join('\n')};
+  }
+
+  // ── DEACTIVATE / ACTIVATE ─────────────────────────────────────────────────
+  var deact=q.match(/^deactivate\s+(.+)$|^retire\s+(.+)$|^disable\s+(.+)$/);
+  if(deact){
+    var term=(deact[1]||deact[2]||deact[3]).trim();
+    var a=findAsset(term);
+    if(!a) return {text:'Asset not found: "'+term+'".'};
+    if(!a.active_status) return {text:'['+a.id+'] '+a.name+' is already inactive.'};
+    var r=await DB.from('assets').update({active_status:false}).eq('id',a.id);
+    if(r.error) return {text:'Database error: '+r.error.message};
+    S.assets=S.assets.map(function(x){ return x.id===a.id?Object.assign({},x,{active_status:false}):x; });
+    await logAudit('EDIT','Asset',a.id,'Deactivated via command console');
+    return {text:'['+a.id+'] '+a.name+' has been deactivated.',cmds:[{ok:true,action:'deactivate',detail:a.id+' — '+a.name}]};
+  }
+  var act=q.match(/^activate\s+(.+)$|^reactivate\s+(.+)$|^enable\s+(.+)$/);
+  if(act){
+    var term=(act[1]||act[2]||act[3]).trim();
+    var a=findAsset(term);
+    if(!a) return {text:'Asset not found: "'+term+'".'};
+    if(a.active_status) return {text:'['+a.id+'] '+a.name+' is already active.'};
+    var r=await DB.from('assets').update({active_status:true}).eq('id',a.id);
+    if(r.error) return {text:'Database error: '+r.error.message};
+    S.assets=S.assets.map(function(x){ return x.id===a.id?Object.assign({},x,{active_status:true}):x; });
+    await logAudit('EDIT','Asset',a.id,'Activated via command console');
+    return {text:'['+a.id+'] '+a.name+' has been activated.',cmds:[{ok:true,action:'activate',detail:a.id+' — '+a.name}]};
+  }
+
+  // ── EDIT ASSET FIELDS ─────────────────────────────────────────────────────
+  // "edit A012 name to New Name"
+  // "edit A012 location to 185CB12A +03.17"
+  // "edit A012 threshold to 750"
+  // "edit A012 meter max to 65535"
+  // "edit A012 reset count to 3"
+  // "edit A012 stuck reading to 15000"
+  // "rename A012 to New Name"
+  var editMatch=q.match(/^(?:edit|update|change|set)\s+(\S+)\s+(name|location|threshold|meter\s*max|reset\s*count|stuck\s*reading|meter\s*max\s*value)\s+to\s+(.+)$/);
+  var renameMatch=q.match(/^rename\s+(\S+)\s+to\s+(.+)$/);
+  if(editMatch||renameMatch){
+    var assetTerm, field, newVal;
+    if(renameMatch){ assetTerm=renameMatch[1]; field='name'; newVal=renameMatch[2].replace(/^["\s]+|["\s]+$/g,''); }
+    else { assetTerm=editMatch[1]; field=editMatch[2].replace(/\s+/g,'_'); newVal=editMatch[3].replace(/^["\s]+|["\s]+$/g,''); }
+    var a=findAsset(assetTerm);
+    if(!a) return {text:'Asset not found: "'+assetTerm+'". Use the asset ID like A012.'};
+    var dbField, dbVal, label;
+    var fieldMap={name:{db:'name',num:false},location:{db:'location',num:false},
+      threshold:{db:'threshold_hours',num:true},meter_max:{db:'meter_max_value',num:true},
+      meter_max_value:{db:'meter_max_value',num:true},reset_count:{db:'reset_count',num:true},
+      stuck_reading:{db:'stuck_reading',num:true}};
+    var fm=fieldMap[field];
+    if(!fm) return {text:'Unknown field "'+field+'". Valid fields: name, location, threshold, meter max, reset count, stuck reading.'};
+    dbField=fm.db; dbVal=fm.num?+newVal:newVal;
+    if(fm.num&&isNaN(dbVal)) return {text:'"'+newVal+'" is not a valid number for '+field+'.'};
+    var upd={}; upd[dbField]=dbVal;
+    var r=await DB.from('assets').update(upd).eq('id',a.id);
+    if(r.error) return {text:'Database error: '+r.error.message};
+    S.assets=S.assets.map(function(x){ return x.id===a.id?Object.assign({},x,upd):x; });
+    await logAudit('EDIT','Asset',a.id,'Set '+dbField+' to '+dbVal);
+    return {text:'Updated ['+a.id+'] '+a.name+':\n  '+dbField+' = '+dbVal,
+      cmds:[{ok:true,action:'editAsset',detail:a.id+' — '+dbField+' → '+dbVal}]};
+  }
+
+  // ── SET READING ───────────────────────────────────────────────────────────
+  // "set reading for A012 in Jan 2025 to 7823"
+  // "update reading A012 january 2025 7823"
+  // "correct A012 jan 2025 to 7823"
+  var setRead=q.match(/(?:set|update|correct|fix)\s+reading\s+(?:for\s+)?(\S+)\s+(?:in\s+)?(.+?)\s+to\s+(\d+)/)||
+               q.match(/(?:set|update|correct|fix)\s+(\S+)\s+(?:reading\s+)?(?:for\s+)?(.+?)\s+to\s+(\d+)/);
+  if(setRead){
+    var assetTerm=setRead[1], monthStr=setRead[2], numStr=setRead[3];
+    var a=findAsset(assetTerm);
+    if(!a) return {text:'Asset not found: "'+assetTerm+'".'};
+    var month=parseMonth(monthStr);
+    if(!month) return {text:'Could not parse month: "'+monthStr+'". Try formats like "Jan 2025" or "2025-01".'};
+    var num=+numStr;
+    if(isNaN(num)||num<0) return {text:'"'+numStr+'" is not a valid reading.'};
+    var v=validateReading(a,S.readings,num,month);
+    var rec={id:uid(),asset_id:a.id,month:month,raw_meter_reading:num,locked:false,
+      created_at:new Date().toISOString(),created_by:S.session.user.email+' (console)',validation:v.status};
+    var r2=await DB.from('monthly_readings').upsert(rec,{onConflict:'asset_id,month'});
+    if(r2.error) return {text:'Database error: '+r2.error.message};
+    var idx=-1;
+    for(var i=0;i<S.readings.length;i++){ if(S.readings[i].asset_id===a.id&&S.readings[i].month===month){idx=i;break;} }
+    if(idx>=0){ S.readings[idx]=rec; } else { S.readings.push(rec); }
+    await logAudit('EDIT','MonthlyReading',a.id,'Console set '+fmtMonth(month)+': '+num+' hrs ['+v.status+']');
+    return {text:'Set reading for ['+a.id+'] '+a.name+':\n  '+fmtMonth(month)+' = '+num.toLocaleString()+' hrs\n  Status: '+v.status+(v.message?' — '+v.message:''),
+      cmds:[{ok:true,action:'setReading',detail:a.id+' '+fmtMonth(month)+' = '+num+' hrs ['+v.status+']'}]};
+  }
+
+  // ── DELETE READING ────────────────────────────────────────────────────────
+  var delRead=q.match(/delete\s+reading\s+(?:for\s+)?(\S+)\s+(?:in\s+)?(.+)$/)||
+               q.match(/remove\s+reading\s+(?:for\s+)?(\S+)\s+(?:in\s+)?(.+)$/);
+  if(delRead){
+    var assetTerm=delRead[1], monthStr=delRead[2];
+    var a=findAsset(assetTerm);
+    if(!a) return {text:'Asset not found: "'+assetTerm+'".'};
+    var month=parseMonth(monthStr);
+    if(!month) return {text:'Could not parse month: "'+monthStr+'".'};
+    var r3=await DB.from('monthly_readings').delete().eq('asset_id',a.id).eq('month',month);
+    if(r3.error) return {text:'Database error: '+r3.error.message};
+    S.readings=S.readings.filter(function(x){ return !(x.asset_id===a.id&&x.month===month); });
+    await logAudit('DELETE','MonthlyReading',a.id,'Console deleted '+fmtMonth(month)+' reading');
+    return {text:'Deleted '+fmtMonth(month)+' reading for ['+a.id+'] '+a.name+'.',
+      cmds:[{ok:true,action:'deleteReading',detail:a.id+' '+fmtMonth(month)}]};
+  }
+
+  // ── CLOSE MONTH ───────────────────────────────────────────────────────────
+  var closeM=q.match(/^close\s+(?:month\s+)?(.+)$/);
+  if(closeM){
+    var month=parseMonth(closeM[1].trim());
+    if(!month) return {text:'Could not parse month: "'+closeM[1]+'".'};
+    if(S.closed.indexOf(month)>=0) return {text:fmtMonth(month)+' is already closed.'};
+    var r4=await DB.from('closed_months').upsert({month:month,closed_by:S.session.user.email});
+    if(r4.error) return {text:'Database error: '+r4.error.message};
+    if(S.closed.indexOf(month)<0) S.closed.push(month);
+    await logAudit('CLOSE_MONTH','Month',month,'Console closed '+fmtMonth(month));
+    return {text:fmtMonth(month)+' has been closed. No further edits allowed unless reopened.',
+      cmds:[{ok:true,action:'closeMonth',detail:fmtMonth(month)}]};
+  }
+
+  // ── REOPEN MONTH ──────────────────────────────────────────────────────────
+  var openM=q.match(/^(?:reopen|open|unlock)\s+(?:month\s+)?(.+)$/);
+  if(openM){
+    var month=parseMonth(openM[1].trim());
+    if(!month) return {text:'Could not parse month: "'+openM[1]+'".'};
+    if(S.closed.indexOf(month)<0) return {text:fmtMonth(month)+' is not closed.'};
+    var r5=await DB.from('closed_months').delete().eq('month',month);
+    if(r5.error) return {text:'Database error: '+r5.error.message};
+    S.closed=S.closed.filter(function(x){ return x!==month; });
+    await logAudit('UNLOCK','Month',month,'Console reopened '+fmtMonth(month));
+    return {text:fmtMonth(month)+' has been reopened.',cmds:[{ok:true,action:'openMonth',detail:fmtMonth(month)}]};
+  }
+
+  // ── FALLBACK ──────────────────────────────────────────────────────────────
+  // Try to detect if they mentioned an asset ID/name with no matching command
+  var words=raw.trim().split(/\s+/);
+  for(var wi=0;wi<words.length;wi++){
+    var maybe=findAsset(words[wi]);
+    if(maybe){
+      return {text:'Did you want info on ['+maybe.id+'] '+maybe.name+'? Try:\n'+
+        '  show asset '+maybe.id+'\n'+
+        '  show readings '+maybe.id+'\n'+
+        '  edit '+maybe.id+' name to "New Name"\n\n'+
+        'Type help to see all commands.'};
+    }
+  }
+  return {text:'Command not recognised: "'+raw+'"\n\nType help to see all available commands.\n\nExamples:\n  show critical assets\n  edit A012 name to "Pump Motor"\n  set reading for A012 in Jan 2025 to 7823\n  total accumulated runtime'};
+}
+
 
 // ════════════════════════════════════════════════════════════
 // INIT

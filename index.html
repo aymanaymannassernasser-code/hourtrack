@@ -1159,10 +1159,11 @@ function renderAI(){
   if(S.userRole!=='admin') return '<div class="card"><p class="dim">Admin only.</p></div>';
 
   var hints=[
-    'show all assets','show critical assets','show warnings',
-    'assets with no readings this month','list MV motors','list LV motors',
-    'show replacements','show closed months','total accumulated runtime',
-    'assets over threshold','summary report','help'
+    'summary report','show critical assets','assets with no readings this month',
+    'fix all name formats','check data quality','show top 10 by runtime',
+    'show MV motors','list assets by location','duplicate readings check',
+    'highest monthly jump this month','bulk deactivate inactive assets',
+    'show all resets','assets with zero readings ever','help'
   ];
   var hintsHTML=hints.map(function(h){
     return '<button class="ai-hint-btn" onclick="aiQuickSend(\''+esc(h)+'\')">'+esc(h)+'</button>';
@@ -1314,49 +1315,284 @@ function parseMonth(s){
 async function processCommand(q, raw){
   var jt=S.jumpThreshold||800;
 
-  // ── HELP ─────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+  // HELP
+  // ─────────────────────────────────────────────────────────────────────────
   if(/^help$|^what can you do|^commands/.test(q)){
     return {text:
-'QUERY COMMANDS\n'+
-'──────────────────────────────────────────────────────\n'+
-'show all assets\n'+
-'show active assets\n'+
-'show inactive assets\n'+
-'show critical assets\n'+
-'show warning assets\n'+
-'show MV motors  /  show LV motors\n'+
-'assets with no readings this month\n'+
-'assets over threshold\n'+
-'show asset A012  (or any ID or name)\n'+
-'total accumulated runtime\n'+
-'summary report\n'+
-'show replacements\n'+
-'show closed months\n'+
-'show readings for A012\n'+
-'\nEDIT COMMANDS\n'+
-'──────────────────────────────────────────────────────\n'+
-'edit A012 name to "New Name"\n'+
-'edit A012 location to "185CB12A +03.17"\n'+
-'edit A012 threshold to 750\n'+
-'edit A012 meter max to 65535\n'+
-'edit A012 reset count to 3\n'+
-'edit A012 stuck reading to 15000\n'+
-'deactivate A012  /  activate A012\n'+
-'\nREADINGS\n'+
-'──────────────────────────────────────────────────────\n'+
-'set reading for A012 in Jan 2025 to 7823\n'+
-'delete reading for A012 in Jan 2025\n'+
-'\nMONTHS\n'+
-'──────────────────────────────────────────────────────\n'+
-'close month Jan 2025\n'+
-'reopen month Jan 2025\n'+
-'\nSETTINGS\n'+
-'──────────────────────────────────────────────────────\n'+
-'set threshold to 750\n'+
-'\nTip: You can reference assets by ID (A012) or by any part of their name.'};
+'═══════════════════════════════════════════════════════\n'+
+' HOURTRACK COMMAND CONSOLE — ALL COMMANDS\n'+
+'═══════════════════════════════════════════════════════\n'+
+'\n📊 REPORTS & ANALYTICS\n'+
+'───────────────────────────────────────────────────────\n'+
+'  summary report\n'+
+'  total accumulated runtime\n'+
+'  show top 10 by runtime\n'+
+'  show bottom 10 by runtime\n'+
+'  show highest jump this month\n'+
+'  show lowest runtime\n'+
+'  average runtime per motor\n'+
+'  runtime breakdown by type\n'+
+'  most replaced assets\n'+
+'  show month [Jan 2025]\n'+
+'\n🔍 QUERY ASSETS\n'+
+'───────────────────────────────────────────────────────\n'+
+'  show all assets\n'+
+'  show active / show inactive\n'+
+'  show critical / show warnings\n'+
+'  show MV motors / show LV motors\n'+
+'  show asset [A012]\n'+
+'  show readings [A012]\n'+
+'  search [keyword]               — search name or location\n'+
+'  list assets by location\n'+
+'  list assets in [panel name]    — e.g. list assets in 185CB\n'+
+'  assets with no readings this month\n'+
+'  assets with zero readings ever\n'+
+'  assets over threshold\n'+
+'  assets never reset\n'+
+'  assets reset more than [N] times\n'+
+'  assets approaching counter limit\n'+
+'  show replacements\n'+
+'  show replacements for [A012]\n'+
+'  show closed months\n'+
+'\n🔬 DATA QUALITY\n'+
+'───────────────────────────────────────────────────────\n'+
+'  check data quality             — full audit report\n'+
+'  fix all name formats           — add missing - before M\n'+
+'  preview name fixes             — show what would change\n'+
+'  find name format issues        — list bad names only\n'+
+'  duplicate readings check\n'+
+'  find flat readings             — same reading 2+ months\n'+
+'  find suspicious jumps\n'+
+'  find zero readings\n'+
+'  find assets with wrong meter max\n'+
+'\n✏️  EDIT SINGLE ASSET\n'+
+'───────────────────────────────────────────────────────\n'+
+'  edit [A012] name to [New Name]\n'+
+'  rename [A012] to [New Name]\n'+
+'  edit [A012] location to [185CB12A +03.17]\n'+
+'  edit [A012] threshold to [750]\n'+
+'  edit [A012] meter max to [65535]\n'+
+'  edit [A012] reset count to [3]\n'+
+'  edit [A012] stuck reading to [15000]\n'+
+'  deactivate [A012] / activate [A012]\n'+
+'\n⚡ BULK EDITS\n'+
+'───────────────────────────────────────────────────────\n'+
+'  fix all name formats           — apply - fix to all assets\n'+
+'  fix name [A012]                — fix one asset name\n'+
+'  bulk set threshold to [750]\n'+
+'  bulk set threshold MV to [750]\n'+
+'  bulk set threshold LV to [750]\n'+
+'  bulk fix meter max             — set MV=65535, LV=10000\n'+
+'  bulk deactivate assets in [panel]\n'+
+'  bulk activate assets in [panel]\n'+
+'\n📅 READINGS\n'+
+'───────────────────────────────────────────────────────\n'+
+'  set reading for [A012] in [Jan 2025] to [7823]\n'+
+'  delete reading for [A012] in [Jan 2025]\n'+
+'\n🗓️  MONTHS\n'+
+'───────────────────────────────────────────────────────\n'+
+'  close month [Jan 2025]\n'+
+'  reopen month [Jan 2025]\n'+
+'\n⚙️  SETTINGS\n'+
+'───────────────────────────────────────────────────────\n'+
+'  set threshold to [750]\n'+
+'  show settings\n'+
+'\nTip: Use any part of an asset name or its full ID.'};
   }
 
-  // ── SET GLOBAL THRESHOLD ──────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+  // SHOW SETTINGS
+  // ─────────────────────────────────────────────────────────────────────────
+  if(/^show settings?$|^current settings?$/.test(q)){
+    var mvCount=S.assets.filter(function(a){ return getMotorType(a.location)==='MV'; }).length;
+    var lvCount=S.assets.filter(function(a){ return getMotorType(a.location)==='LV'; }).length;
+    return {text:
+      'Current Settings\n'+
+      '══════════════════════════════\n'+
+      'Global jump threshold: '+(S.jumpThreshold||800)+' hrs/month\n'+
+      'MV counter max: 65,535 hrs (CB in drawer)\n'+
+      'LV counter max: 10,000 hrs (CC in drawer)\n'+
+      '\nFleet: '+S.assets.length+' total ('+mvCount+' MV, '+lvCount+' LV)\n'+
+      'Closed months: '+S.closed.length+'\n'+
+      'Current month: '+fmtMonth(CUR_MONTH)};
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // NAME FORMAT — PREVIEW / FIND / FIX
+  // ─────────────────────────────────────────────────────────────────────────
+  function needsNameFix(name){
+    // Pattern: ends in something like ...AM01, ...AM02, ...BM03 — needs dash before M
+    // Standard: 028P001A-M01
+    return /[A-Z0-9][A-Z]M\d+$/i.test(name) && !/[A-Z0-9]-M\d+$/i.test(name);
+  }
+  function fixName(name){
+    // Insert - before the last occurrence of M followed by digits at end
+    return name.replace(/([A-Z0-9])M(\d+)$/i, '$1-M$2');
+  }
+
+  if(/^preview name fix|^what.*name.*fix|^show.*name.*fix/.test(q)){
+    var bad=S.assets.filter(function(a){ return needsNameFix(a.name); });
+    if(!bad.length) return {text:'All asset names already follow the standard format (e.g. 028P001A-M01). ✓'};
+    return {text:'Preview — '+bad.length+' name(s) would be updated:\n\n'+
+      bad.map(function(a){ return '['+a.id+']  '+a.name+'  →  '+fixName(a.name); }).join('\n')+
+      '\n\nType "fix all name formats" to apply all changes.'};
+  }
+
+  if(/^find name.*(issue|problem|bad|wrong|format)|^list.*bad.*name|^name.*format.*issue/.test(q)){
+    var bad=S.assets.filter(function(a){ return needsNameFix(a.name); });
+    if(!bad.length) return {text:'No name format issues found. All names follow the standard. ✓'};
+    return {text:'Assets with name format issues ('+bad.length+') — missing - before M:\n\n'+
+      bad.map(function(a){ return '['+a.id+'] '+a.name; }).join('\n')+
+      '\n\nType "fix all name formats" to fix them all, or "fix name [ID]" for one.'};
+  }
+
+  if(/^fix all name|^fix.*name.*format|^apply.*name.*fix/.test(q)){
+    var bad=S.assets.filter(function(a){ return needsNameFix(a.name); });
+    if(!bad.length) return {text:'All asset names already follow the standard format. Nothing to fix. ✓'};
+    var cmds=[], errors=0;
+    for(var i=0;i<bad.length;i++){
+      var a=bad[i];
+      var newName=fixName(a.name);
+      var r=await DB.from('assets').update({name:newName}).eq('id',a.id);
+      if(r.error){ cmds.push({ok:false,action:'fixName',detail:a.id,err:r.error.message}); errors++; continue; }
+      S.assets=S.assets.map(function(x){ return x.id===a.id?Object.assign({},x,{name:newName}):x; });
+      await logAudit('EDIT','Asset',a.id,'Name format fix: '+a.name+' → '+newName);
+      cmds.push({ok:true,action:'fixName',detail:a.id+':  '+a.name+' → '+newName});
+    }
+    return {text:(bad.length-errors)+' name(s) fixed'+(errors?' ('+errors+' errors)':' ✓')+':\n\n'+
+      bad.map(function(a){ return '['+a.id+']  '+a.name+'  →  '+fixName(a.name); }).join('\n'), cmds:cmds};
+  }
+
+  var fixOne=q.match(/^fix name\s+(\S+)$/);
+  if(fixOne){
+    var a=findAsset(fixOne[1]);
+    if(!a) return {text:'Asset not found: "'+fixOne[1]+'".'};
+    if(!needsNameFix(a.name)) return {text:'['+a.id+'] '+a.name+' — name already follows the standard format. ✓'};
+    var newName=fixName(a.name);
+    var r=await DB.from('assets').update({name:newName}).eq('id',a.id);
+    if(r.error) return {text:'Database error: '+r.error.message};
+    S.assets=S.assets.map(function(x){ return x.id===a.id?Object.assign({},x,{name:newName}):x; });
+    await logAudit('EDIT','Asset',a.id,'Name format fix: '+a.name+' → '+newName);
+    return {text:'Fixed ['+a.id+']: '+a.name+' → '+newName,
+      cmds:[{ok:true,action:'fixName',detail:a.id+': '+a.name+' → '+newName}]};
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // DATA QUALITY AUDIT
+  // ─────────────────────────────────────────────────────────────────────────
+  if(/^check data quality|^data quality|^audit|^health check/.test(q)){
+    var issues=[];
+    var badNames=S.assets.filter(function(a){ return needsNameFix(a.name); });
+    if(badNames.length) issues.push('⚠ '+badNames.length+' asset(s) have name format issues (missing - before M)\n     → Type "fix all name formats" to fix');
+
+    var noLoc=S.assets.filter(function(a){ return !a.location||!a.location.trim(); });
+    if(noLoc.length) issues.push('⚠ '+noLoc.length+' asset(s) have no location set:\n     '+noLoc.map(function(a){ return a.id; }).join(', '));
+
+    var missingCur=S.assets.filter(function(a){
+      return a.active_status&&!S.readings.find(function(r){ return r.asset_id===a.id&&r.month===CUR_MONTH; });
+    });
+    if(missingCur.length) issues.push('⚠ '+missingCur.length+' active asset(s) missing reading for '+fmtMonth(CUR_MONTH)+':\n     '+missingCur.slice(0,8).map(function(a){ return a.id; }).join(', ')+(missingCur.length>8?' …':''));
+
+    var criticals=[];
+    S.assets.forEach(function(a){
+      var lat=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return y.month.localeCompare(x.month); })[0];
+      if(lat&&lat.validation==='CRITICAL') criticals.push(a.id);
+    });
+    if(criticals.length) issues.push('🔴 '+criticals.length+' asset(s) in CRITICAL status:\n     '+criticals.join(', '));
+
+    var wrongMax=S.assets.filter(function(a){
+      var auto=getMotorType(a.location)==='MV'?65535:getMotorType(a.location)==='LV'?10000:null;
+      return auto&&a.meter_max_value!==auto;
+    });
+    if(wrongMax.length) issues.push('⚠ '+wrongMax.length+' asset(s) have mismatched meter_max_value vs location type:\n     '+wrongMax.map(function(a){ return a.id+' (has '+a.meter_max_value+', should be '+getMeterMax(a)+')'; }).join('\n     ')+'\n     → Type "bulk fix meter max" to correct all');
+
+    // Flat readings
+    var flat=[];
+    S.assets.forEach(function(a){
+      var rds=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return y.month.localeCompare(x.month); });
+      for(var i=0;i<rds.length-1;i++){
+        if(rds[i].raw_meter_reading===rds[i+1].raw_meter_reading){ flat.push(a.id); break; }
+      }
+    });
+    if(flat.length) issues.push('⚠ '+flat.length+' asset(s) have flat readings (same value 2+ consecutive months):\n     '+flat.slice(0,8).join(', ')+(flat.length>8?' …':''));
+
+    if(!issues.length) return {text:'✓ Data quality check passed — no issues found!\n\nFleet: '+S.assets.length+' assets, '+S.readings.length+' total readings.'};
+    return {text:'Data Quality Report — '+issues.length+' issue(s) found:\n\n'+issues.join('\n\n')};
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // FIND SPECIFIC DATA PROBLEMS
+  // ─────────────────────────────────────────────────────────────────────────
+  if(/^find flat readings?|^flat readings?|^stuck readings?/.test(q)){
+    var flat=[];
+    S.assets.forEach(function(a){
+      var rds=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return x.month.localeCompare(y.month); });
+      for(var i=1;i<rds.length;i++){
+        if(rds[i].raw_meter_reading===rds[i-1].raw_meter_reading)
+          flat.push({a:a,month:rds[i].month,val:rds[i].raw_meter_reading,prevMonth:rds[i-1].month});
+      }
+    });
+    if(!flat.length) return {text:'No flat readings found. All consecutive readings show movement. ✓'};
+    return {text:'Flat readings (same value 2+ consecutive months) — '+flat.length+' occurrence(s):\n\n'+
+      flat.map(function(f){ return '['+f.a.id+'] '+f.a.name+':  '+fmtMonth(f.prevMonth)+' and '+fmtMonth(f.month)+' both = '+f.val.toLocaleString()+' hrs'; }).join('\n')};
+  }
+
+  if(/^find suspicious|^suspicious jumps?|^abnormal jumps?/.test(q)){
+    var susp=[];
+    S.assets.forEach(function(a){
+      var rds=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return x.month.localeCompare(y.month); });
+      var thr2=(a.threshold_hours&&a.threshold_hours>0)?a.threshold_hours:jt;
+      for(var i=1;i<rds.length;i++){
+        var diff=rds[i].raw_meter_reading-rds[i-1].raw_meter_reading;
+        if(diff>thr2*1.5) susp.push({a:a,month:rds[i].month,diff:diff,thr:thr2});
+      }
+    });
+    if(!susp.length) return {text:'No suspicious jumps found across all historical readings. ✓'};
+    return {text:'Suspicious jumps (>1.5× threshold) — '+susp.length+' found:\n\n'+
+      susp.map(function(s){ return '['+s.a.id+'] '+s.a.name+':  '+fmtMonth(s.month)+' jumped +'+s.diff.toLocaleString()+' hrs (limit '+s.thr+')'; }).join('\n')};
+  }
+
+  if(/^find zero readings?|^zero readings?/.test(q)){
+    var zeros=[];
+    S.readings.forEach(function(r){ if(r.raw_meter_reading===0) zeros.push(r); });
+    if(!zeros.length) return {text:'No zero readings found. ✓'};
+    return {text:'Zero readings found ('+zeros.length+'):\n\n'+
+      zeros.map(function(r){
+        var a=S.assets.find(function(x){ return x.id===r.asset_id; });
+        return '['+r.asset_id+'] '+(a?a.name:'?')+' — '+fmtMonth(r.month);
+      }).join('\n')};
+  }
+
+  if(/^duplicate readings?|^check.*duplicate/.test(q)){
+    var seen={}, dups=[];
+    S.readings.forEach(function(r){
+      var key=r.asset_id+'|'+r.month;
+      if(seen[key]) dups.push(r);
+      else seen[key]=true;
+    });
+    if(!dups.length) return {text:'No duplicate readings found. ✓'};
+    return {text:'Duplicate readings ('+dups.length+' extras — database issue):\n\n'+
+      dups.map(function(r){
+        var a=S.assets.find(function(x){ return x.id===r.asset_id; });
+        return '['+r.asset_id+'] '+(a?a.name:'?')+' — '+fmtMonth(r.month)+' = '+r.raw_meter_reading+' (id: '+r.id+')';
+      }).join('\n')};
+  }
+
+  if(/^find.*wrong meter max|^assets.*wrong meter|^check meter max/.test(q)){
+    var wrong=S.assets.filter(function(a){
+      var auto=getMotorType(a.location)==='MV'?65535:getMotorType(a.location)==='LV'?10000:null;
+      return auto&&a.meter_max_value!==auto;
+    });
+    if(!wrong.length) return {text:'All motor meter_max values match their type (MV=65535, LV=10000). ✓'};
+    return {text:'Mismatched meter_max_value vs location type ('+wrong.length+'):\n\n'+
+      wrong.map(function(a){ return '['+a.id+'] '+a.name+'\n  Location: '+a.location+'  ('+getMotorType(a.location)+')\n  Has: '+a.meter_max_value+'  Should be: '+getMeterMax(a); }).join('\n\n')+
+      '\n\nType "bulk fix meter max" to correct all at once.'};
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // SET GLOBAL THRESHOLD
+  // ─────────────────────────────────────────────────────────────────────────
   var thr=q.match(/set\s+(global\s+)?threshold\s+to\s+(\d+)/);
   if(thr){
     var n=+thr[2];
@@ -1366,10 +1602,13 @@ async function processCommand(q, raw){
     if(r.error) return {text:'Database error: '+r.error.message};
     await logAudit('EDIT','AppSettings','jump_threshold','Set global jump threshold to '+n+' hrs');
     render();
-    return {text:'Global jump threshold set to '+n+' hrs/month for all users.', cmds:[{ok:true,action:'setThreshold',detail:n+' hrs/month'}]};
+    return {text:'Global jump threshold set to '+n.toLocaleString()+' hrs/month for all users. ✓',
+      cmds:[{ok:true,action:'setThreshold',detail:n+' hrs/month'}]};
   }
 
-  // ── SHOW ALL / FILTERED ASSETS ────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+  // SHOW ALL / FILTERED ASSETS
+  // ─────────────────────────────────────────────────────────────────────────
   if(/^show all assets?$|^list all assets?$|^all assets?$/.test(q)){
     if(!S.assets.length) return {text:'No assets in database yet.'};
     return {text:'All assets ('+S.assets.length+'):\n\n'+S.assets.map(fmtAssetLine).join('\n')};
@@ -1384,21 +1623,59 @@ async function processCommand(q, raw){
   }
   if(/show mv motor|list mv motor|mv motor/.test(q)){
     var a=S.assets.filter(function(x){ return getMotorType(x.location)==='MV'; });
-    return {text:a.length?'MV motors ('+a.length+') — 65,535 hr counter:\n\n'+a.map(fmtAssetLine).join('\n'):'No MV motors found. MV motors have CB in their drawer location.'};
+    return {text:a.length?'MV motors ('+a.length+') — 65,535 hr counter:\n\n'+a.map(fmtAssetLine).join('\n'):'No MV motors found (CB in drawer location).'};
   }
   if(/show lv motor|list lv motor|lv motor/.test(q)){
     var a=S.assets.filter(function(x){ return getMotorType(x.location)==='LV'; });
-    return {text:a.length?'LV motors ('+a.length+') — 10,000 hr counter:\n\n'+a.map(fmtAssetLine).join('\n'):'No LV motors found. LV motors have CC in their drawer location.'};
+    return {text:a.length?'LV motors ('+a.length+') — 10,000 hr counter:\n\n'+a.map(fmtAssetLine).join('\n'):'No LV motors found (CC in drawer location).'};
   }
 
-  // ── CRITICAL / WARNING ────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+  // SEARCH BY KEYWORD
+  // ─────────────────────────────────────────────────────────────────────────
+  var searchMatch=q.match(/^search\s+(.+)$/);
+  if(searchMatch){
+    var kw=searchMatch[1].toUpperCase();
+    var found=S.assets.filter(function(a){
+      return a.name.toUpperCase().indexOf(kw)>=0||a.id.toUpperCase().indexOf(kw)>=0||(a.location&&a.location.toUpperCase().indexOf(kw)>=0);
+    });
+    if(!found.length) return {text:'No assets match "'+searchMatch[1]+'".'};
+    return {text:'Search results for "'+searchMatch[1]+'" ('+found.length+'):\n\n'+found.map(fmtAssetLine).join('\n')};
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // LIST BY LOCATION / IN PANEL
+  // ─────────────────────────────────────────────────────────────────────────
+  if(/^list assets? by location$|^group by location$|^assets? by location$/.test(q)){
+    var locs={};
+    S.assets.forEach(function(a){
+      var panel=(a.location||'Unknown').split(/\s+/)[0]||'Unknown';
+      if(!locs[panel]) locs[panel]=[];
+      locs[panel].push(a);
+    });
+    var keys=Object.keys(locs).sort();
+    return {text:'Assets grouped by panel ('+keys.length+' panels):\n\n'+
+      keys.map(function(k){ return k+' ('+locs[k].length+'):\n'+locs[k].map(function(a){ return '  ['+a.id+'] '+a.name+(a.active_status?'':' [INACTIVE]'); }).join('\n'); }).join('\n\n')};
+  }
+
+  var inPanel=q.match(/^(?:list|show)?\s*assets?\s+in\s+(.+)$|^show\s+(.+)\s+panel$/);
+  if(inPanel){
+    var panelKw=(inPanel[1]||inPanel[2]||'').toUpperCase().trim();
+    var found=S.assets.filter(function(a){ return (a.location||'').toUpperCase().indexOf(panelKw)>=0; });
+    if(!found.length) return {text:'No assets found in "'+panelKw+'".'};
+    return {text:'Assets in "'+panelKw+'" ('+found.length+'):\n\n'+found.map(fmtAssetLine).join('\n')};
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // CRITICAL / WARNING
+  // ─────────────────────────────────────────────────────────────────────────
   if(/critical/.test(q)&&!/^show asset|^edit|^set reading/.test(q)){
     var crits=[];
     S.assets.forEach(function(a){
       var lat=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return y.month.localeCompare(x.month); })[0];
       if(lat&&lat.validation==='CRITICAL') crits.push(a);
     });
-    return {text:crits.length?'Assets with CRITICAL status ('+crits.length+'):\n\n'+crits.map(fmtAssetLine).join('\n'):'No critical assets this month. ✓'};
+    return {text:crits.length?'Assets with CRITICAL status ('+crits.length+'):\n\n'+crits.map(fmtAssetLine).join('\n'):'No critical assets. ✓'};
   }
   if(/warning/.test(q)&&!/^edit|^set reading/.test(q)){
     var warns=[];
@@ -1406,232 +1683,553 @@ async function processCommand(q, raw){
       var lat=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return y.month.localeCompare(x.month); })[0];
       if(lat&&lat.validation==='WARNING') warns.push(a);
     });
-    return {text:warns.length?'Assets with WARNING status ('+warns.length+'):\n\n'+warns.map(fmtAssetLine).join('\n'):'No warning assets this month. ✓'};
+    return {text:warns.length?'Assets with WARNING status ('+warns.length+'):\n\n'+warns.map(fmtAssetLine).join('\n'):'No warning assets. ✓'};
   }
 
-  // ── NO READINGS THIS MONTH ────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+  // NO READINGS THIS MONTH / EVER
+  // ─────────────────────────────────────────────────────────────────────────
   if(/no readings?.*(this month|current)|missing readings/.test(q)){
     var missing=S.assets.filter(function(a){
       return a.active_status&&!S.readings.find(function(r){ return r.asset_id===a.id&&r.month===CUR_MONTH; });
     });
     return {text:missing.length?
-      'Active assets with no reading in '+fmtMonth(CUR_MONTH)+' ('+missing.length+'):\n\n'+missing.map(function(a){ return '['+a.id+'] '+a.name+' | '+a.location; }).join('\n'):
+      'Active assets missing reading for '+fmtMonth(CUR_MONTH)+' ('+missing.length+'):\n\n'+missing.map(function(a){ return '['+a.id+'] '+a.name+' | '+a.location; }).join('\n'):
       'All active assets have readings for '+fmtMonth(CUR_MONTH)+'. ✓'};
   }
 
-  // ── ASSETS OVER THRESHOLD ─────────────────────────────────────────────────
+  if(/zero readings? ever|never.*reading|no readings? ever|assets without any reading/.test(q)){
+    var never=S.assets.filter(function(a){ return !S.readings.find(function(r){ return r.asset_id===a.id; }); });
+    return {text:never.length?
+      'Assets with zero readings ever ('+never.length+'):\n\n'+never.map(function(a){ return '['+a.id+'] '+a.name+' | '+a.location+(a.active_status?'':' [INACTIVE]'); }).join('\n'):
+      'All assets have at least one reading. ✓'};
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ASSETS OVER THRESHOLD
+  // ─────────────────────────────────────────────────────────────────────────
   if(/over threshold|exceed.*(threshold|limit)|above threshold/.test(q)){
     var over=[];
     S.assets.forEach(function(a){
       var rds=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return y.month.localeCompare(x.month); });
-      var lat=rds[0], prev=rds[1];
-      if(lat&&prev){
-        var delta=lat.raw_meter_reading-prev.raw_meter_reading;
+      if(rds.length>=2){
+        var diff=rds[0].raw_meter_reading-rds[1].raw_meter_reading;
         var thr2=(a.threshold_hours&&a.threshold_hours>0)?a.threshold_hours:jt;
-        if(delta>thr2) over.push({a:a,delta:delta,thr:thr2});
+        if(diff>thr2) over.push({a:a,delta:diff,thr:thr2});
       }
     });
     if(!over.length) return {text:'No assets exceeded the jump threshold this month. ✓'};
+    over.sort(function(a,b){ return b.delta-a.delta; });
     return {text:'Assets over threshold ('+over.length+'):\n\n'+over.map(function(o){
-      return '['+o.a.id+'] '+o.a.name+' — +'+o.delta+' hrs vs '+o.thr+' hr limit (+'+(o.delta-o.thr)+' over)';
+      return '['+o.a.id+'] '+o.a.name+' — +'+o.delta.toLocaleString()+' hrs vs '+o.thr+' hr limit (+'+(o.delta-o.thr)+' over)';
     }).join('\n')};
   }
 
-  // ── TOTAL ACCUMULATED RUNTIME ─────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+  // ASSETS NEVER RESET / RESET MANY TIMES
+  // ─────────────────────────────────────────────────────────────────────────
+  if(/assets? never reset|never been reset|reset count.*0/.test(q)){
+    var nr=S.assets.filter(function(a){ return a.active_status&&a.reset_count===0; });
+    return {text:nr.length?
+      'Active assets never reset ('+nr.length+'):\n\n'+nr.map(function(a){
+        var rds=S.readings.filter(function(r){ return r.asset_id===a.id; });
+        var lat=rds.sort(function(x,y){ return y.month.localeCompare(x.month); })[0];
+        return '['+a.id+'] '+a.name+' — current acc: '+calcAcc(a,lat?lat.raw_meter_reading:0).toLocaleString()+' hrs';
+      }).join('\n'):
+      'All active assets have been reset at least once.'};
+  }
+
+  var manyResets=q.match(/reset.*more than\s+(\d+)|reset.*(?:over|above)\s+(\d+)|more than\s+(\d+).*reset/);
+  if(manyResets){
+    var limit=+(manyResets[1]||manyResets[2]||manyResets[3]);
+    var many=S.assets.filter(function(a){ return a.reset_count>limit; });
+    return {text:many.length?
+      'Assets reset more than '+limit+' time(s) ('+many.length+'):\n\n'+many.map(function(a){ return '['+a.id+'] '+a.name+' — '+a.reset_count+' resets'; }).join('\n'):
+      'No assets have been reset more than '+limit+' times.'};
+  }
+
+  if(/^show all resets?|^list all resets?|^all replacements?$/.test(q)){
+    if(!S.repls.length) return {text:'No meter replacements logged yet.'};
+    return {text:'All meter replacements ('+S.repls.length+'):\n\n'+
+      S.repls.slice().reverse().map(function(r){
+        var a=S.assets.find(function(x){ return x.id===r.asset_id; });
+        return fmtMonth(r.replacement_date)+' — ['+(a?a.id:r.asset_id)+'] '+(a?a.name:r.asset_id)+
+          ' — Reset '+r.previous_reset_count+'→'+r.new_reset_count+
+          ' — Stuck: '+r.last_stuck_reading.toLocaleString()+' hrs'+(r.notes?' — '+r.notes:'');
+      }).join('\n')};
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // APPROACHING COUNTER LIMIT
+  // ─────────────────────────────────────────────────────────────────────────
+  if(/approaching.*(?:limit|max|counter)|near.*(?:limit|max|rollover)|close to.*(?:limit|max)/.test(q)){
+    var pct=0.85; // 85% of counter max
+    var near=[];
+    S.assets.forEach(function(a){
+      var lat=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return y.month.localeCompare(x.month); })[0];
+      if(!lat) return;
+      var mx=getMeterMax(a);
+      var ratio=lat.raw_meter_reading/mx;
+      if(ratio>=pct) near.push({a:a,raw:lat.raw_meter_reading,mx:mx,pct:Math.round(ratio*100)});
+    });
+    near.sort(function(a,b){ return b.pct-a.pct; });
+    return {text:near.length?
+      'Assets approaching counter limit (≥85% of max) — '+near.length+' found:\n\n'+
+      near.map(function(n){ return '['+n.a.id+'] '+n.a.name+':  '+n.raw.toLocaleString()+' / '+n.mx.toLocaleString()+' hrs  ('+n.pct+'%)  '+getMotorType(n.a.location)+' motor'; }).join('\n')+
+      '\n\nThese will rollover soon — make sure to log a replacement when they do.':
+      'No assets are approaching their counter limit (threshold: 85%). ✓'};
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // TOTAL ACCUMULATED RUNTIME
+  // ─────────────────────────────────────────────────────────────────────────
   if(/total.*(accumulated|runtime|hours?)|accumulated.*total/.test(q)){
     var total=0, active=0, mv=0, lv=0;
     S.assets.forEach(function(a){
       var lat=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return y.month.localeCompare(x.month); })[0];
       var acc=calcAcc(a,lat?lat.raw_meter_reading:0);
-      total+=acc;
-      if(a.active_status) active+=acc;
+      total+=acc; if(a.active_status) active+=acc;
       if(getMotorType(a.location)==='MV') mv+=acc;
       if(getMotorType(a.location)==='LV') lv+=acc;
     });
-    return {text:'Total accumulated runtime across all assets:\n\n'+
-      '  All assets:    '+total.toLocaleString()+' hrs\n'+
-      '  Active only:   '+active.toLocaleString()+' hrs\n'+
+    var years=function(h){ return (h/8760).toFixed(1)+' years'; };
+    return {text:'Total accumulated runtime:\n\n'+
+      '  All assets:    '+total.toLocaleString()+' hrs  ('+years(total)+')\n'+
+      '  Active only:   '+active.toLocaleString()+' hrs  ('+years(active)+')\n'+
       '  MV motors:     '+mv.toLocaleString()+' hrs\n'+
       '  LV motors:     '+lv.toLocaleString()+' hrs\n\n'+
-      'Total assets: '+S.assets.length+' ('+S.assets.filter(function(a){ return a.active_status; }).length+' active)'};
+      'Fleet: '+S.assets.length+' total ('+S.assets.filter(function(a){ return a.active_status; }).length+' active)'};
   }
 
-  // ── SUMMARY REPORT ────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+  // AVERAGE RUNTIME
+  // ─────────────────────────────────────────────────────────────────────────
+  if(/average runtime|avg runtime|mean runtime/.test(q)){
+    var active=S.assets.filter(function(a){ return a.active_status; });
+    if(!active.length) return {text:'No active assets.'};
+    var total=0;
+    active.forEach(function(a){
+      var lat=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return y.month.localeCompare(x.month); })[0];
+      total+=calcAcc(a,lat?lat.raw_meter_reading:0);
+    });
+    var avg=Math.round(total/active.length);
+    var mvAssets=active.filter(function(a){ return getMotorType(a.location)==='MV'; });
+    var lvAssets=active.filter(function(a){ return getMotorType(a.location)==='LV'; });
+    var avgMV=0,avgLV=0;
+    if(mvAssets.length){ var t=0; mvAssets.forEach(function(a){ var lat=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return y.month.localeCompare(x.month); })[0]; t+=calcAcc(a,lat?lat.raw_meter_reading:0); }); avgMV=Math.round(t/mvAssets.length); }
+    if(lvAssets.length){ var t=0; lvAssets.forEach(function(a){ var lat=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return y.month.localeCompare(x.month); })[0]; t+=calcAcc(a,lat?lat.raw_meter_reading:0); }); avgLV=Math.round(t/lvAssets.length); }
+    return {text:'Average accumulated runtime per motor:\n\n'+
+      '  All active:   '+avg.toLocaleString()+' hrs\n'+
+      (mvAssets.length?'  MV motors:   '+avgMV.toLocaleString()+' hrs\n':'')+
+      (lvAssets.length?'  LV motors:   '+avgLV.toLocaleString()+' hrs\n':'')+
+      '\nBased on '+active.length+' active assets.'};
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // RUNTIME BREAKDOWN BY TYPE
+  // ─────────────────────────────────────────────────────────────────────────
+  if(/runtime breakdown|breakdown by type|type breakdown/.test(q)){
+    var groups={MV:[],LV:[],Unknown:[]};
+    S.assets.filter(function(a){ return a.active_status; }).forEach(function(a){
+      var t=getMotorType(a.location);
+      (groups[t]||groups.Unknown).push(a);
+    });
+    var lines=['Runtime breakdown by motor type:\n'];
+    ['MV','LV','Unknown'].forEach(function(t){
+      if(!groups[t].length) return;
+      var total=0;
+      groups[t].forEach(function(a){
+        var lat=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return y.month.localeCompare(x.month); })[0];
+        total+=calcAcc(a,lat?lat.raw_meter_reading:0);
+      });
+      var avg=Math.round(total/groups[t].length);
+      lines.push(t+' motors ('+groups[t].length+'):\n  Total: '+total.toLocaleString()+' hrs\n  Avg:   '+avg.toLocaleString()+' hrs/motor');
+    });
+    return {text:lines.join('\n')};
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // TOP/BOTTOM N BY RUNTIME
+  // ─────────────────────────────────────────────────────────────────────────
+  var topN=q.match(/^show top\s+(\d+)|^top\s+(\d+)|^highest\s+(\d+)/);
+  var botN=q.match(/^show bottom\s+(\d+)|^bottom\s+(\d+)|^lowest\s+(\d+)/);
+  var n=topN?(+(topN[1]||topN[2]||topN[3])):botN?(+(botN[1]||botN[2]||botN[3])):0;
+  if(!n&&/^show top|^top\s+\d|highest runtime$|^show lowest|lowest runtime/.test(q)) n=10;
+  if(n>0&&(topN||botN||/top|highest|bottom|lowest/.test(q))){
+    var sorted=S.assets.map(function(a){
+      var lat=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return y.month.localeCompare(x.month); })[0];
+      return {a:a, acc:calcAcc(a,lat?lat.raw_meter_reading:0)};
+    }).sort(function(a,b){ return botN?a.acc-b.acc:b.acc-a.acc; }).slice(0,n||10);
+    var label=botN?'Bottom':'Top';
+    return {text:label+' '+sorted.length+' assets by accumulated runtime:\n\n'+
+      sorted.map(function(r,i){ return (i+1)+'. ['+r.a.id+'] '+r.a.name+' — '+r.acc.toLocaleString()+' hrs  ('+getMotorType(r.a.location)+')'; }).join('\n')};
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // HIGHEST JUMP THIS MONTH / LOWEST RUNTIME
+  // ─────────────────────────────────────────────────────────────────────────
+  if(/highest.*jump|biggest.*jump|largest.*jump|most.*hours.*this month/.test(q)){
+    var jumps=[];
+    S.assets.forEach(function(a){
+      var rds=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return y.month.localeCompare(x.month); });
+      if(rds.length>=2){
+        var diff=rds[0].raw_meter_reading-rds[1].raw_meter_reading;
+        if(diff>0) jumps.push({a:a,delta:diff,month:rds[0].month});
+      }
+    });
+    jumps.sort(function(a,b){ return b.delta-a.delta; });
+    var top5=jumps.slice(0,10);
+    return {text:top5.length?'Highest monthly jumps (last recorded):\n\n'+
+      top5.map(function(j,i){ return (i+1)+'. ['+j.a.id+'] '+j.a.name+' — +'+j.delta.toLocaleString()+' hrs in '+fmtMonth(j.month); }).join('\n'):
+      'No consecutive readings found to compute jumps.'};
+  }
+
+  if(/^show lowest runtime|^lowest runtime|^least.*hours/.test(q)){
+    var active=S.assets.filter(function(a){ return a.active_status; });
+    var sorted=active.map(function(a){
+      var lat=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return y.month.localeCompare(x.month); })[0];
+      return {a:a,acc:calcAcc(a,lat?lat.raw_meter_reading:0)};
+    }).sort(function(a,b){ return a.acc-b.acc; }).slice(0,10);
+    return {text:'Lowest accumulated runtime (active assets):\n\n'+
+      sorted.map(function(r,i){ return (i+1)+'. ['+r.a.id+'] '+r.a.name+' — '+r.acc.toLocaleString()+' hrs'; }).join('\n')};
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // MOST REPLACED ASSETS
+  // ─────────────────────────────────────────────────────────────────────────
+  if(/most replaced|most resets?|highest reset|reset.*rank/.test(q)){
+    var ranked=S.assets.filter(function(a){ return a.reset_count>0; })
+      .sort(function(a,b){ return b.reset_count-a.reset_count; }).slice(0,10);
+    if(!ranked.length) return {text:'No assets have been reset yet.'};
+    return {text:'Most replaced motors (top 10):\n\n'+
+      ranked.map(function(a,i){ return (i+1)+'. ['+a.id+'] '+a.name+' — '+a.reset_count+' reset(s) — stuck: '+a.stuck_reading.toLocaleString()+' hrs'; }).join('\n')};
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // SHOW MONTH REPORT
+  // ─────────────────────────────────────────────────────────────────────────
+  var showMonth=q.match(/^show month\s+(.+)$|^month report\s+(.+)$/);
+  if(showMonth){
+    var monthStr=(showMonth[1]||showMonth[2]).trim();
+    var month=parseMonth(monthStr);
+    if(!month) return {text:'Could not parse month: "'+monthStr+'". Try "Jan 2025" or "2025-01".'};
+    var rds=S.readings.filter(function(r){ return r.month===month; });
+    if(!rds.length) return {text:'No readings found for '+fmtMonth(month)+'.'};
+    var ok=0,warn=0,crit=0,reset=0;
+    rds.forEach(function(r){
+      if(r.validation==='OK') ok++;
+      else if(r.validation==='WARNING') warn++;
+      else if(r.validation==='CRITICAL') crit++;
+      else if(r.validation==='RESET') reset++;
+    });
+    return {text:'Month report — '+fmtMonth(month)+':\n\n'+
+      'Readings logged: '+rds.length+' / '+S.assets.filter(function(a){ return a.active_status; }).length+' active assets\n'+
+      'OK:       '+ok+'\n'+
+      'WARNING:  '+warn+'\n'+
+      'CRITICAL: '+crit+'\n'+
+      'RESET:    '+reset+'\n'+
+      'Locked:   '+(S.closed.indexOf(month)>=0?'Yes':'No')+'\n\n'+
+      rds.map(function(r){
+        var a=S.assets.find(function(x){ return x.id===r.asset_id; });
+        return '['+r.asset_id+'] '+(a?a.name:'?')+':  '+r.raw_meter_reading.toLocaleString()+' hrs  ['+r.validation+']';
+      }).join('\n')};
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // SUMMARY REPORT
+  // ─────────────────────────────────────────────────────────────────────────
   if(/^summary|^report$|^status report/.test(q)){
     var active=S.assets.filter(function(a){ return a.active_status; });
-    var warns2=0,crits2=0,nodata=0,resets=0;
+    var warns2=0,crits2=0,nodata=0,resets2=0,oks=0;
     active.forEach(function(a){
       var lat=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return y.month.localeCompare(x.month); })[0];
       if(!lat) nodata++;
       else if(lat.validation==='CRITICAL') crits2++;
       else if(lat.validation==='WARNING') warns2++;
-      else if(lat.validation==='RESET') resets++;
+      else if(lat.validation==='RESET') resets2++;
+      else oks++;
     });
-    var closedLast=S.closed.length?fmtMonth(S.closed[S.closed.length-1]):'None';
-    var mvCount=S.assets.filter(function(a){ return getMotorType(a.location)==='MV'; }).length;
-    var lvCount=S.assets.filter(function(a){ return getMotorType(a.location)==='LV'; }).length;
-    return {text:'HourTrack Summary — '+fmtMonth(CUR_MONTH)+'\n'+
-      '══════════════════════════════════════\n'+
-      'Total assets:      '+S.assets.length+' ('+active.length+' active, '+(S.assets.length-active.length)+' inactive)\n'+
-      'MV motors (CB):    '+mvCount+'\n'+
-      'LV motors (CC):    '+lvCount+'\n'+
-      '──────────────────────────────────────\n'+
-      'Status this month:\n'+
-      '  OK:              '+(active.length-warns2-crits2-nodata-resets)+'\n'+
-      '  WARNING:         '+warns2+'\n'+
-      '  CRITICAL:        '+crits2+'\n'+
-      '  RESET/Rollover:  '+resets+'\n'+
-      '  No data yet:     '+nodata+'\n'+
-      '──────────────────────────────────────\n'+
-      'Jump threshold:    '+(S.jumpThreshold||800)+' hrs/month\n'+
-      'Closed months:     '+S.closed.length+'\n'+
-      'Last closed:       '+closedLast+'\n'+
-      'Total replacements:'+S.repls.length};
+    var badNames=S.assets.filter(function(a){ return needsNameFix(a.name); }).length;
+    var mvC=S.assets.filter(function(a){ return getMotorType(a.location)==='MV'; }).length;
+    var lvC=S.assets.filter(function(a){ return getMotorType(a.location)==='LV'; }).length;
+    var total=0; S.assets.forEach(function(a){ var lat=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return y.month.localeCompare(x.month); })[0]; total+=calcAcc(a,lat?lat.raw_meter_reading:0); });
+    return {text:
+      '╔══════════════════════════════════════╗\n'+
+      '║  HourTrack — '+fmtMonth(CUR_MONTH).padEnd(24)+'║\n'+
+      '╠══════════════════════════════════════╣\n'+
+      '║  FLEET                               ║\n'+
+      '║  Total assets:    '+String(S.assets.length).padEnd(18)+'║\n'+
+      '║  Active:          '+String(active.length).padEnd(18)+'║\n'+
+      '║  Inactive:        '+String(S.assets.length-active.length).padEnd(18)+'║\n'+
+      '║  MV motors (CB):  '+String(mvC).padEnd(18)+'║\n'+
+      '║  LV motors (CC):  '+String(lvC).padEnd(18)+'║\n'+
+      '╠══════════════════════════════════════╣\n'+
+      '║  THIS MONTH STATUS                   ║\n'+
+      '║  OK:              '+String(oks).padEnd(18)+'║\n'+
+      '║  Warning:         '+String(warns2).padEnd(18)+'║\n'+
+      '║  Critical:        '+String(crits2).padEnd(18)+'║\n'+
+      '║  Reset/Rollover:  '+String(resets2).padEnd(18)+'║\n'+
+      '║  No data:         '+String(nodata).padEnd(18)+'║\n'+
+      '╠══════════════════════════════════════╣\n'+
+      '║  RUNTIME                             ║\n'+
+      '║  Total fleet:     '+String(total.toLocaleString()+' hrs').padEnd(18)+'║\n'+
+      '║  Jump threshold:  '+String((S.jumpThreshold||800)+' hrs/mo').padEnd(18)+'║\n'+
+      '╠══════════════════════════════════════╣\n'+
+      '║  DATA QUALITY                        ║\n'+
+      '║  Name issues:     '+String(badNames+(badNames?' (type "fix all name formats")':'')).padEnd(18)+'║\n'+
+      '║  Closed months:   '+String(S.closed.length).padEnd(18)+'║\n'+
+      '║  Total readings:  '+String(S.readings.length).padEnd(18)+'║\n'+
+      '╚══════════════════════════════════════╝'};
   }
 
-  // ── SHOW REPLACEMENTS ─────────────────────────────────────────────────────
-  if(/^show replacements?|^list replacements?|^replacements?$/.test(q)){
+  // ─────────────────────────────────────────────────────────────────────────
+  // SHOW REPLACEMENTS (general / for specific asset)
+  // ─────────────────────────────────────────────────────────────────────────
+  var replFor=q.match(/^show replacements?\s+(?:for\s+)?(.+)$/);
+  if(replFor&&!/^show replacements?$/.test(q)){
+    var a=findAsset(replFor[1]);
+    if(!a) return {text:'Asset not found: "'+replFor[1]+'".'};
+    var ar=S.repls.filter(function(r){ return r.asset_id===a.id; });
+    if(!ar.length) return {text:'No replacements logged for ['+a.id+'] '+a.name+'.'};
+    return {text:'Replacements for ['+a.id+'] '+a.name+' ('+ar.length+'):\n\n'+
+      ar.map(function(r){ return fmtMonth(r.replacement_date)+' — Reset '+r.previous_reset_count+'→'+r.new_reset_count+' — Stuck: '+r.last_stuck_reading.toLocaleString()+' hrs'+(r.notes?' — '+r.notes:''); }).join('\n')};
+  }
+  if(/^show replacements?|^list replacements?|^all replacements?/.test(q)){
     if(!S.repls.length) return {text:'No meter replacements logged yet.'};
-    return {text:'Meter replacements ('+S.repls.length+'):\n\n'+
+    return {text:'All replacements ('+S.repls.length+'):\n\n'+
       S.repls.slice().reverse().map(function(r){
         var a=S.assets.find(function(x){ return x.id===r.asset_id; });
-        return fmtMonth(r.replacement_date)+' — ['+(a?a.id:r.asset_id)+'] '+(a?a.name:r.asset_id)+
-          ' — Reset '+r.previous_reset_count+' → '+r.new_reset_count+
-          ' — Last reading: '+r.last_stuck_reading.toLocaleString()+' hrs'+
-          (r.notes?' — '+r.notes:'');
+        return fmtMonth(r.replacement_date)+' — ['+(a?a.id:r.asset_id)+'] '+(a?a.name:r.asset_id)+' — Reset '+r.previous_reset_count+'→'+r.new_reset_count+' — Stuck: '+r.last_stuck_reading.toLocaleString()+' hrs'+(r.notes?' — '+r.notes:'');
       }).join('\n')};
   }
 
-  // ── SHOW CLOSED MONTHS ────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+  // SHOW CLOSED MONTHS
+  // ─────────────────────────────────────────────────────────────────────────
   if(/closed months?|locked months?/.test(q)){
     return {text:S.closed.length?
-      'Closed months ('+S.closed.length+'):\n\n'+S.closed.map(fmtMonth).join('\n'):
+      'Closed months ('+S.closed.length+'):\n\n'+S.closed.slice().sort().map(fmtMonth).join('\n'):
       'No months have been closed yet.'};
   }
 
-  // ── SHOW SPECIFIC ASSET ───────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+  // SHOW SPECIFIC ASSET
+  // ─────────────────────────────────────────────────────────────────────────
   var showAsset=q.match(/^show asset\s+(.+)$|^info(?:rmation)?\s+(?:on\s+|for\s+|about\s+)?(.+)$|^details?\s+(?:for\s+|of\s+)?(.+)$/);
   if(showAsset){
     var term=(showAsset[1]||showAsset[2]||showAsset[3]||'').trim();
     var a=findAsset(term);
-    if(!a) return {text:'Asset not found: "'+term+'". Try "show all assets" to see IDs.'};
+    if(!a) return {text:'Asset not found: "'+term+'".'};
     var rds=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return x.month.localeCompare(y.month); });
     var lat=rds[rds.length-1];
     var acc=calcAcc(a,lat?lat.raw_meter_reading:0);
     var type=getMotorType(a.location);
+    var nameFix=needsNameFix(a.name)?'\n⚠ Name format issue → type "fix name '+a.id+'" to correct':'';
     var rlines=rds.slice(-6).reverse().map(function(r,i){
-      var prev2=rds[rds.length-2-i];
+      var idx2=rds.length-1-i;
+      var prev2=rds[idx2-1];
       var delta=prev2?r.raw_meter_reading-prev2.raw_meter_reading:null;
-      return '  '+fmtMonth(r.month)+':  '+r.raw_meter_reading.toLocaleString()+' hrs raw'+(delta!==null?'  (Δ '+delta+')':'')+'  ['+r.validation+']';
+      return '  '+fmtMonth(r.month)+':  '+r.raw_meter_reading.toLocaleString()+' hrs raw'+(delta!==null?'  (Δ '+delta+')':'  (first)')+' ['+r.validation+']';
     }).join('\n');
     return {text:
-      '['+a.id+'] '+a.name+'\n'+
+      '['+a.id+'] '+a.name+nameFix+'\n'+
       '════════════════════════════════\n'+
-      'Location:      '+a.location+'\n'+
-      'Type:          '+type+' motor ('+getMeterMax(a).toLocaleString()+' hr counter)\n'+
-      'Status:        '+(a.active_status?'Active':'INACTIVE')+'\n'+
-      'Accumulated:   '+acc.toLocaleString()+' hrs\n'+
-      'Reset count:   '+a.reset_count+'×\n'+
-      'Stuck reading: '+a.stuck_reading.toLocaleString()+' hrs\n'+
-      'Latest raw:    '+(lat?lat.raw_meter_reading.toLocaleString()+' hrs  ['+lat.validation+']':'No readings')+'\n'+
+      'Location:       '+a.location+'\n'+
+      'Type:           '+type+' motor ('+getMeterMax(a).toLocaleString()+' hr counter)\n'+
+      'Status:         '+(a.active_status?'Active':'INACTIVE')+'\n'+
+      'Accumulated:    '+acc.toLocaleString()+' hrs\n'+
+      'Reset count:    '+a.reset_count+'×\n'+
+      'Stuck reading:  '+a.stuck_reading.toLocaleString()+' hrs\n'+
+      'Latest raw:     '+(lat?lat.raw_meter_reading.toLocaleString()+' hrs  ['+lat.validation+']':'No readings')+'\n'+
       'Jump threshold: '+((a.threshold_hours&&a.threshold_hours>0)?a.threshold_hours:(S.jumpThreshold||800))+' hrs/month\n'+
-      '\nRecent readings:\n'+rlines};
+      'Total readings: '+rds.length+'\n'+
+      '\nLast 6 readings:\n'+rlines};
   }
 
-  // ── SHOW READINGS FOR ASSET ───────────────────────────────────────────────
-  var showReadings=q.match(/^show readings?\s+(?:for\s+)?(.+)$/);
+  // ─────────────────────────────────────────────────────────────────────────
+  // SHOW READINGS FOR ASSET
+  // ─────────────────────────────────────────────────────────────────────────
+  var showReadings=q.match(/^show readings?\s+(?:for\s+)?(.+)$|^readings?\s+(?:for\s+)?(.+)$/);
   if(showReadings){
-    var term=showReadings[1].trim();
+    var term=(showReadings[1]||showReadings[2]).trim();
     var a=findAsset(term);
     if(!a) return {text:'Asset not found: "'+term+'".'};
     var rds=S.readings.filter(function(r){ return r.asset_id===a.id; }).sort(function(x,y){ return x.month.localeCompare(y.month); });
-    if(!rds.length) return {text:'No readings found for ['+a.id+'] '+a.name+'.'};
+    if(!rds.length) return {text:'No readings for ['+a.id+'] '+a.name+'.'};
     return {text:'All readings for ['+a.id+'] '+a.name+' ('+rds.length+'):\n\n'+
       rds.map(function(r,i){
         var prev2=rds[i-1];
         var delta=prev2?r.raw_meter_reading-prev2.raw_meter_reading:null;
-        return fmtMonth(r.month)+':  '+r.raw_meter_reading.toLocaleString()+' hrs raw'+
-          (delta!==null?'  Δ '+delta:'  (first)')+
+        return fmtMonth(r.month)+':  '+r.raw_meter_reading.toLocaleString()+' raw'+(delta!==null?'  Δ '+delta:'  (first)')+
           '  acc: '+calcAcc(a,r.raw_meter_reading).toLocaleString()+
-          '  ['+r.validation+']'+
-          (r.locked?'  🔒':'');
+          '  ['+r.validation+']'+(r.locked?'  🔒':'');
       }).join('\n')};
   }
 
-  // ── DEACTIVATE / ACTIVATE ─────────────────────────────────────────────────
-  var deact=q.match(/^deactivate\s+(.+)$|^retire\s+(.+)$|^disable\s+(.+)$/);
+  // ─────────────────────────────────────────────────────────────────────────
+  // DEACTIVATE / ACTIVATE SINGLE ASSET
+  // ─────────────────────────────────────────────────────────────────────────
+  var deact=q.match(/^(?:deactivate|retire|disable)\s+(.+)$/);
   if(deact){
-    var term=(deact[1]||deact[2]||deact[3]).trim();
-    var a=findAsset(term);
-    if(!a) return {text:'Asset not found: "'+term+'".'};
+    var a=findAsset(deact[1].trim());
+    if(!a) return {text:'Asset not found: "'+deact[1]+'".'};
     if(!a.active_status) return {text:'['+a.id+'] '+a.name+' is already inactive.'};
     var r=await DB.from('assets').update({active_status:false}).eq('id',a.id);
     if(r.error) return {text:'Database error: '+r.error.message};
     S.assets=S.assets.map(function(x){ return x.id===a.id?Object.assign({},x,{active_status:false}):x; });
     await logAudit('EDIT','Asset',a.id,'Deactivated via command console');
-    return {text:'['+a.id+'] '+a.name+' has been deactivated.',cmds:[{ok:true,action:'deactivate',detail:a.id+' — '+a.name}]};
+    return {text:'['+a.id+'] '+a.name+' deactivated.',cmds:[{ok:true,action:'deactivate',detail:a.id}]};
   }
-  var act=q.match(/^activate\s+(.+)$|^reactivate\s+(.+)$|^enable\s+(.+)$/);
+  var act=q.match(/^(?:activate|reactivate|enable)\s+(.+)$/);
   if(act){
-    var term=(act[1]||act[2]||act[3]).trim();
-    var a=findAsset(term);
-    if(!a) return {text:'Asset not found: "'+term+'".'};
+    var a=findAsset(act[1].trim());
+    if(!a) return {text:'Asset not found: "'+act[1]+'".'};
     if(a.active_status) return {text:'['+a.id+'] '+a.name+' is already active.'};
     var r=await DB.from('assets').update({active_status:true}).eq('id',a.id);
     if(r.error) return {text:'Database error: '+r.error.message};
     S.assets=S.assets.map(function(x){ return x.id===a.id?Object.assign({},x,{active_status:true}):x; });
     await logAudit('EDIT','Asset',a.id,'Activated via command console');
-    return {text:'['+a.id+'] '+a.name+' has been activated.',cmds:[{ok:true,action:'activate',detail:a.id+' — '+a.name}]};
+    return {text:'['+a.id+'] '+a.name+' activated.',cmds:[{ok:true,action:'activate',detail:a.id}]};
   }
 
-  // ── EDIT ASSET FIELDS ─────────────────────────────────────────────────────
-  // "edit A012 name to New Name"
-  // "edit A012 location to 185CB12A +03.17"
-  // "edit A012 threshold to 750"
-  // "edit A012 meter max to 65535"
-  // "edit A012 reset count to 3"
-  // "edit A012 stuck reading to 15000"
-  // "rename A012 to New Name"
-  var editMatch=q.match(/^(?:edit|update|change|set)\s+(\S+)\s+(name|location|threshold|meter\s*max|reset\s*count|stuck\s*reading|meter\s*max\s*value)\s+to\s+(.+)$/);
+  // ─────────────────────────────────────────────────────────────────────────
+  // EDIT SINGLE ASSET FIELDS
+  // ─────────────────────────────────────────────────────────────────────────
+  var editMatch=q.match(/^(?:edit|update|change|set)\s+(\S+)\s+(name|location|threshold|meter\s*max(?:\s*value)?|reset\s*count|stuck\s*reading)\s+to\s+(.+)$/);
   var renameMatch=q.match(/^rename\s+(\S+)\s+to\s+(.+)$/);
   if(editMatch||renameMatch){
     var assetTerm, field, newVal;
-    if(renameMatch){ assetTerm=renameMatch[1]; field='name'; newVal=renameMatch[2].replace(/^["\s]+|["\s]+$/g,''); }
-    else { assetTerm=editMatch[1]; field=editMatch[2].replace(/\s+/g,'_'); newVal=editMatch[3].replace(/^["\s]+|["\s]+$/g,''); }
+    if(renameMatch){ assetTerm=renameMatch[1]; field='name'; newVal=renameMatch[2].replace(/^["'\s]+|["'\s]+$/g,''); }
+    else { assetTerm=editMatch[1]; field=editMatch[2].replace(/\s+/g,'_'); newVal=editMatch[3].replace(/^["'\s]+|["'\s]+$/g,''); }
     var a=findAsset(assetTerm);
-    if(!a) return {text:'Asset not found: "'+assetTerm+'". Use the asset ID like A012.'};
-    var dbField, dbVal, label;
-    var fieldMap={name:{db:'name',num:false},location:{db:'location',num:false},
-      threshold:{db:'threshold_hours',num:true},meter_max:{db:'meter_max_value',num:true},
-      meter_max_value:{db:'meter_max_value',num:true},reset_count:{db:'reset_count',num:true},
-      stuck_reading:{db:'stuck_reading',num:true}};
+    if(!a) return {text:'Asset not found: "'+assetTerm+'".'};
+    var fieldMap={name:{db:'name',num:false},location:{db:'location',num:false},threshold:{db:'threshold_hours',num:true},
+      meter_max:{db:'meter_max_value',num:true},meter_max_value:{db:'meter_max_value',num:true},
+      reset_count:{db:'reset_count',num:true},stuck_reading:{db:'stuck_reading',num:true}};
     var fm=fieldMap[field];
-    if(!fm) return {text:'Unknown field "'+field+'". Valid fields: name, location, threshold, meter max, reset count, stuck reading.'};
-    dbField=fm.db; dbVal=fm.num?+newVal:newVal;
-    if(fm.num&&isNaN(dbVal)) return {text:'"'+newVal+'" is not a valid number for '+field+'.'};
-    var upd={}; upd[dbField]=dbVal;
+    if(!fm) return {text:'Unknown field "'+field+'".'};
+    var dbVal=fm.num?+newVal:newVal;
+    if(fm.num&&isNaN(dbVal)) return {text:'"'+newVal+'" is not a valid number.'};
+    var upd={}; upd[fm.db]=dbVal;
     var r=await DB.from('assets').update(upd).eq('id',a.id);
     if(r.error) return {text:'Database error: '+r.error.message};
     S.assets=S.assets.map(function(x){ return x.id===a.id?Object.assign({},x,upd):x; });
-    await logAudit('EDIT','Asset',a.id,'Set '+dbField+' to '+dbVal);
-    return {text:'Updated ['+a.id+'] '+a.name+':\n  '+dbField+' = '+dbVal,
-      cmds:[{ok:true,action:'editAsset',detail:a.id+' — '+dbField+' → '+dbVal}]};
+    await logAudit('EDIT','Asset',a.id,'Set '+fm.db+' to '+dbVal);
+    return {text:'Updated ['+a.id+'] '+a.name+':\n  '+fm.db+' = '+dbVal,
+      cmds:[{ok:true,action:'editAsset',detail:a.id+' — '+fm.db+' → '+dbVal}]};
   }
 
-  // ── SET READING ───────────────────────────────────────────────────────────
-  // "set reading for A012 in Jan 2025 to 7823"
-  // "update reading A012 january 2025 7823"
-  // "correct A012 jan 2025 to 7823"
+  // ─────────────────────────────────────────────────────────────────────────
+  // BULK EDITS
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // bulk set threshold to N  (all / MV / LV)
+  var bulkThr=q.match(/^bulk\s+set\s+threshold\s+(mv|lv|all)?\s*to\s+(\d+)$/)||
+               q.match(/^set\s+(mv|lv|all)\s+threshold\s+to\s+(\d+)$/);
+  if(bulkThr){
+    var typeFilter=((bulkThr[1]||'all')).toUpperCase();
+    var n=+(bulkThr[2]);
+    if(n<1||n>10000) return {text:'Threshold must be between 1 and 10,000.'};
+    var targets=S.assets.filter(function(a){
+      if(typeFilter==='MV') return getMotorType(a.location)==='MV';
+      if(typeFilter==='LV') return getMotorType(a.location)==='LV';
+      return true;
+    });
+    var cmds=[], errs=0;
+    for(var i=0;i<targets.length;i++){
+      var r=await DB.from('assets').update({threshold_hours:n}).eq('id',targets[i].id);
+      if(r.error){ errs++; continue; }
+      S.assets=S.assets.map(function(x){ return x.id===targets[i].id?Object.assign({},x,{threshold_hours:n}):x; });
+      cmds.push({ok:true,action:'bulkSetThreshold',detail:targets[i].id+' → '+n+' hrs'});
+    }
+    await logAudit('EDIT','Bulk','threshold_hours','Bulk set threshold to '+n+' for '+typeFilter);
+    return {text:'Bulk threshold update complete:\n  Type: '+(typeFilter==='ALL'?'All assets':typeFilter+' motors')+'\n  New threshold: '+n+' hrs/month\n  Updated: '+(targets.length-errs)+(errs?' ('+errs+' errors)':' assets ✓'), cmds:cmds};
+  }
+
+  // bulk fix meter max  — set MV=65535, LV=10000
+  if(/^bulk fix meter max|^fix all meter max|^fix meter max/.test(q)){
+    var wrong=S.assets.filter(function(a){
+      var auto=getMotorType(a.location)==='MV'?65535:getMotorType(a.location)==='LV'?10000:null;
+      return auto&&a.meter_max_value!==auto;
+    });
+    if(!wrong.length) return {text:'All meter_max values already match their motor type. ✓'};
+    var cmds=[], errs=0;
+    for(var i=0;i<wrong.length;i++){
+      var a=wrong[i];
+      var correctMax=getMeterMax(a);
+      var r=await DB.from('assets').update({meter_max_value:correctMax}).eq('id',a.id);
+      if(r.error){ errs++; cmds.push({ok:false,action:'bulkFixMeterMax',detail:a.id,err:r.error.message}); continue; }
+      S.assets=S.assets.map(function(x){ return x.id===a.id?Object.assign({},x,{meter_max_value:correctMax}):x; });
+      await logAudit('EDIT','Asset',a.id,'Bulk fix meter_max: '+a.meter_max_value+' → '+correctMax);
+      cmds.push({ok:true,action:'bulkFixMeterMax',detail:a.id+': '+a.meter_max_value+' → '+correctMax});
+    }
+    return {text:(wrong.length-errs)+' meter_max value(s) corrected'+(errs?' ('+errs+' errors)':' ✓')+':\n\n'+
+      wrong.map(function(a){ return '['+a.id+'] '+a.name+': '+a.meter_max_value+' → '+getMeterMax(a)+' ('+getMotorType(a.location)+')'; }).join('\n'), cmds:cmds};
+  }
+
+  // bulk deactivate / activate assets in [panel]
+  var bulkDeact=q.match(/^bulk\s+deactivate\s+assets?\s+in\s+(.+)$/);
+  if(bulkDeact){
+    var kw=bulkDeact[1].toUpperCase();
+    var targets=S.assets.filter(function(a){ return a.active_status&&(a.location||'').toUpperCase().indexOf(kw)>=0; });
+    if(!targets.length) return {text:'No active assets found in "'+bulkDeact[1]+'".'};
+    var cmds=[], errs=0;
+    for(var i=0;i<targets.length;i++){
+      var r=await DB.from('assets').update({active_status:false}).eq('id',targets[i].id);
+      if(r.error){ errs++; continue; }
+      S.assets=S.assets.map(function(x){ return x.id===targets[i].id?Object.assign({},x,{active_status:false}):x; });
+      await logAudit('EDIT','Asset',targets[i].id,'Bulk deactivate in '+kw);
+      cmds.push({ok:true,action:'bulkDeactivate',detail:targets[i].id});
+    }
+    return {text:(targets.length-errs)+' assets deactivated in "'+bulkDeact[1]+'"'+(errs?' ('+errs+' errors)':' ✓'), cmds:cmds};
+  }
+
+  var bulkAct=q.match(/^bulk\s+activate\s+assets?\s+in\s+(.+)$/);
+  if(bulkAct){
+    var kw=bulkAct[1].toUpperCase();
+    var targets=S.assets.filter(function(a){ return !a.active_status&&(a.location||'').toUpperCase().indexOf(kw)>=0; });
+    if(!targets.length) return {text:'No inactive assets found in "'+bulkAct[1]+'".'};
+    var cmds=[], errs=0;
+    for(var i=0;i<targets.length;i++){
+      var r=await DB.from('assets').update({active_status:true}).eq('id',targets[i].id);
+      if(r.error){ errs++; continue; }
+      S.assets=S.assets.map(function(x){ return x.id===targets[i].id?Object.assign({},x,{active_status:true}):x; });
+      await logAudit('EDIT','Asset',targets[i].id,'Bulk activate in '+kw);
+      cmds.push({ok:true,action:'bulkActivate',detail:targets[i].id});
+    }
+    return {text:(targets.length-errs)+' assets activated in "'+bulkAct[1]+'"'+(errs?' ('+errs+' errors)':' ✓'), cmds:cmds};
+  }
+
+  // bulk deactivate inactive (assets with no readings this month for X months)
+  if(/^bulk deactivate inactive|^deactivate all inactive/.test(q)){
+    var targets=S.assets.filter(function(a){
+      if(!a.active_status) return false;
+      return !S.readings.find(function(r){ return r.asset_id===a.id; });
+    });
+    if(!targets.length) return {text:'No active assets with zero readings ever found.'};
+    var cmds=[], errs=0;
+    for(var i=0;i<targets.length;i++){
+      var r=await DB.from('assets').update({active_status:false}).eq('id',targets[i].id);
+      if(r.error){ errs++; continue; }
+      S.assets=S.assets.map(function(x){ return x.id===targets[i].id?Object.assign({},x,{active_status:false}):x; });
+      await logAudit('EDIT','Asset',targets[i].id,'Bulk deactivate: no readings ever');
+      cmds.push({ok:true,action:'bulkDeactivateInactive',detail:targets[i].id+' '+targets[i].name});
+    }
+    return {text:(targets.length-errs)+' assets with zero readings ever have been deactivated'+(errs?' ('+errs+' errors)':' ✓'), cmds:cmds};
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // SET / DELETE READING
+  // ─────────────────────────────────────────────────────────────────────────
   var setRead=q.match(/(?:set|update|correct|fix)\s+reading\s+(?:for\s+)?(\S+)\s+(?:in\s+)?(.+?)\s+to\s+(\d+)/)||
-               q.match(/(?:set|update|correct|fix)\s+(\S+)\s+(?:reading\s+)?(?:for\s+)?(.+?)\s+to\s+(\d+)/);
+               q.match(/(?:set|update|correct|fix)\s+(\S+)\s+(?:reading\s+)?(?:for\s+|in\s+)?(.+?)\s+to\s+(\d+)/);
   if(setRead){
-    var assetTerm=setRead[1], monthStr=setRead[2], numStr=setRead[3];
+    var assetTerm=setRead[1],monthStr=setRead[2],num=+setRead[3];
     var a=findAsset(assetTerm);
     if(!a) return {text:'Asset not found: "'+assetTerm+'".'};
     var month=parseMonth(monthStr);
-    if(!month) return {text:'Could not parse month: "'+monthStr+'". Try formats like "Jan 2025" or "2025-01".'};
-    var num=+numStr;
-    if(isNaN(num)||num<0) return {text:'"'+numStr+'" is not a valid reading.'};
+    if(!month) return {text:'Could not parse month: "'+monthStr+'".'};
+    if(isNaN(num)||num<0) return {text:'Invalid reading value.'};
     var v=validateReading(a,S.readings,num,month);
     var rec={id:uid(),asset_id:a.id,month:month,raw_meter_reading:num,locked:false,
       created_at:new Date().toISOString(),created_by:S.session.user.email+' (console)',validation:v.status};
@@ -1640,29 +2238,28 @@ async function processCommand(q, raw){
     var idx=-1;
     for(var i=0;i<S.readings.length;i++){ if(S.readings[i].asset_id===a.id&&S.readings[i].month===month){idx=i;break;} }
     if(idx>=0){ S.readings[idx]=rec; } else { S.readings.push(rec); }
-    await logAudit('EDIT','MonthlyReading',a.id,'Console set '+fmtMonth(month)+': '+num+' hrs ['+v.status+']');
-    return {text:'Set reading for ['+a.id+'] '+a.name+':\n  '+fmtMonth(month)+' = '+num.toLocaleString()+' hrs\n  Status: '+v.status+(v.message?' — '+v.message:''),
-      cmds:[{ok:true,action:'setReading',detail:a.id+' '+fmtMonth(month)+' = '+num+' hrs ['+v.status+']'}]};
+    await logAudit('EDIT','MonthlyReading',a.id,'Console: '+fmtMonth(month)+' = '+num+' hrs ['+v.status+']');
+    return {text:'Set ['+a.id+'] '+a.name+':\n  '+fmtMonth(month)+' = '+num.toLocaleString()+' hrs\n  Validation: '+v.status+(v.message?' — '+v.message:''),
+      cmds:[{ok:true,action:'setReading',detail:a.id+' '+fmtMonth(month)+' = '+num+' ['+v.status+']'}]};
   }
 
-  // ── DELETE READING ────────────────────────────────────────────────────────
-  var delRead=q.match(/delete\s+reading\s+(?:for\s+)?(\S+)\s+(?:in\s+)?(.+)$/)||
-               q.match(/remove\s+reading\s+(?:for\s+)?(\S+)\s+(?:in\s+)?(.+)$/);
+  var delRead=q.match(/(?:delete|remove)\s+reading\s+(?:for\s+)?(\S+)\s+(?:in\s+)?(.+)$/);
   if(delRead){
-    var assetTerm=delRead[1], monthStr=delRead[2];
-    var a=findAsset(assetTerm);
-    if(!a) return {text:'Asset not found: "'+assetTerm+'".'};
-    var month=parseMonth(monthStr);
-    if(!month) return {text:'Could not parse month: "'+monthStr+'".'};
+    var a=findAsset(delRead[1]);
+    if(!a) return {text:'Asset not found: "'+delRead[1]+'".'};
+    var month=parseMonth(delRead[2]);
+    if(!month) return {text:'Could not parse month: "'+delRead[2]+'".'};
     var r3=await DB.from('monthly_readings').delete().eq('asset_id',a.id).eq('month',month);
     if(r3.error) return {text:'Database error: '+r3.error.message};
     S.readings=S.readings.filter(function(x){ return !(x.asset_id===a.id&&x.month===month); });
-    await logAudit('DELETE','MonthlyReading',a.id,'Console deleted '+fmtMonth(month)+' reading');
+    await logAudit('DELETE','MonthlyReading',a.id,'Console deleted '+fmtMonth(month));
     return {text:'Deleted '+fmtMonth(month)+' reading for ['+a.id+'] '+a.name+'.',
       cmds:[{ok:true,action:'deleteReading',detail:a.id+' '+fmtMonth(month)}]};
   }
 
-  // ── CLOSE MONTH ───────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+  // CLOSE / REOPEN MONTH
+  // ─────────────────────────────────────────────────────────────────────────
   var closeM=q.match(/^close\s+(?:month\s+)?(.+)$/);
   if(closeM){
     var month=parseMonth(closeM[1].trim());
@@ -1672,11 +2269,9 @@ async function processCommand(q, raw){
     if(r4.error) return {text:'Database error: '+r4.error.message};
     if(S.closed.indexOf(month)<0) S.closed.push(month);
     await logAudit('CLOSE_MONTH','Month',month,'Console closed '+fmtMonth(month));
-    return {text:fmtMonth(month)+' has been closed. No further edits allowed unless reopened.',
-      cmds:[{ok:true,action:'closeMonth',detail:fmtMonth(month)}]};
+    return {text:fmtMonth(month)+' closed. ✓',cmds:[{ok:true,action:'closeMonth',detail:fmtMonth(month)}]};
   }
 
-  // ── REOPEN MONTH ──────────────────────────────────────────────────────────
   var openM=q.match(/^(?:reopen|open|unlock)\s+(?:month\s+)?(.+)$/);
   if(openM){
     var month=parseMonth(openM[1].trim());
@@ -1686,24 +2281,24 @@ async function processCommand(q, raw){
     if(r5.error) return {text:'Database error: '+r5.error.message};
     S.closed=S.closed.filter(function(x){ return x!==month; });
     await logAudit('UNLOCK','Month',month,'Console reopened '+fmtMonth(month));
-    return {text:fmtMonth(month)+' has been reopened.',cmds:[{ok:true,action:'openMonth',detail:fmtMonth(month)}]};
+    return {text:fmtMonth(month)+' reopened. ✓',cmds:[{ok:true,action:'openMonth',detail:fmtMonth(month)}]};
   }
 
-  // ── FALLBACK ──────────────────────────────────────────────────────────────
-  // Try to detect if they mentioned an asset ID/name with no matching command
+  // ─────────────────────────────────────────────────────────────────────────
+  // FALLBACK — smart asset detection
+  // ─────────────────────────────────────────────────────────────────────────
   var words=raw.trim().split(/\s+/);
   for(var wi=0;wi<words.length;wi++){
     var maybe=findAsset(words[wi]);
-    if(maybe){
-      return {text:'Did you want info on ['+maybe.id+'] '+maybe.name+'? Try:\n'+
-        '  show asset '+maybe.id+'\n'+
-        '  show readings '+maybe.id+'\n'+
-        '  edit '+maybe.id+' name to "New Name"\n\n'+
-        'Type help to see all commands.'};
+    if(maybe&&words[wi].length>1){
+      return {text:'Did you want info on ['+maybe.id+'] '+maybe.name+'?\n\nTry:\n  show asset '+maybe.id+'\n  show readings '+maybe.id+'\n  edit '+maybe.id+' name to "New Name"\n\nType help to see all commands.'};
     }
   }
-  return {text:'Command not recognised: "'+raw+'"\n\nType help to see all available commands.\n\nExamples:\n  show critical assets\n  edit A012 name to "Pump Motor"\n  set reading for A012 in Jan 2025 to 7823\n  total accumulated runtime'};
+  return {text:'Command not recognised: "'+raw+'"\n\nType help to see everything I can do.\n\nCommon commands:\n  show critical assets\n  check data quality\n  fix all name formats\n  summary report\n  show top 10 by runtime'};
 }
+
+
+
 
 
 // ════════════════════════════════════════════════════════════
